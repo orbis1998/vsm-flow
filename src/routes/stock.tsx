@@ -52,7 +52,7 @@ function StockPage() {
   const units = products.reduce((s, p) => s + productStock(p), 0);
 
   const submit = async () => {
-    if (!productId || qty <= 0) return toast.error("Produit et quantité requis");
+    if (!productId || qty <= 0) { toast.error("Produit et quantité requis"); return; }
     const sign = TYPES.find((t) => t[0] === type)![2];
     await stockService.addMovement({ productId, type, quantity: sign * qty, note });
     toast.success("Mouvement enregistré");
