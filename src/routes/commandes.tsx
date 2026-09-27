@@ -238,7 +238,7 @@ function NewOrderDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
 
   const submit = async () => {
     const c = customers.find((x) => x.id === customerId);
-    if (!c || lines.length === 0) return toast.error("Choisissez un client et au moins un produit");
+    if (!c || lines.length === 0) { toast.error("Choisissez un client et au moins un produit"); return; }
     await ordersService.create({
       customerId: c.id,
       customerName: c.fullName,

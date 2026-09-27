@@ -39,7 +39,7 @@ function PosPage() {
   const price = (p: Product) => p.promoPrice ?? p.salePrice;
   const add = (p: Product) => {
     const v = p.variants.find((x) => x.stock > 0);
-    if (!v) return toast.error("Rupture de stock");
+    if (!v) { toast.error("Rupture de stock"); return; }
     setCart((c) => {
       const ex = c.find((l) => l.variantId === v.id);
       if (ex) return c.map((l) => (l.variantId === v.id ? { ...l, qty: l.qty + 1 } : l));

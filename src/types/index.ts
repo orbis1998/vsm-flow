@@ -58,10 +58,10 @@ export interface User {
   phone: string;
   role: RoleCode;
   status: UserStatus;
-  posteId?: ID;
+  posteId?: ID | undefined;
   extraPermissions: Permission[];
   createdAt: ISODate;
-  lastLoginAt?: ISODate;
+  lastLoginAt?: ISODate | undefined;
 }
 
 export interface AuditLog {
@@ -70,7 +70,7 @@ export interface AuditLog {
   userName: string;
   action: string;
   entity: string;
-  entityId?: ID;
+  entityId?: ID | undefined;
   createdAt: ISODate;
 }
 
@@ -88,7 +88,7 @@ export interface AppNotification {
 export interface Category {
   id: ID;
   name: string;
-  parentId?: ID;
+  parentId?: ID | undefined;
 }
 
 export interface Brand {
@@ -101,9 +101,9 @@ export interface ProductVariant {
   productId: ID;
   sku: string;
   barcode: string;
-  size?: string;
-  color?: string;
-  model?: string;
+  size?: string | undefined;
+  color?: string | undefined;
+  model?: string | undefined;
   stock: number;
   reserved: number;
   sold: number;
@@ -116,19 +116,19 @@ export interface Product {
   name: string;
   sku: string;
   barcode: string;
-  customBarcode?: string;
+  customBarcode?: string | undefined;
   categoryId: ID;
   brandId: ID;
   supplierId: ID;
   purchasePrice: number;
   salePrice: number;
-  promoPrice?: number;
+  promoPrice?: number | undefined;
   minStock: number;
   unit: Unit;
   description: string;
   imageLabel: string;
-  lotNumber?: string;
-  expiryDate?: ISODate;
+  lotNumber?: string | undefined;
+  expiryDate?: ISODate | undefined;
   variants: ProductVariant[];
   createdAt: ISODate;
 }
@@ -150,7 +150,7 @@ export interface StockMovement {
   id: ID;
   reference: string;
   productId: ID;
-  variantId?: ID;
+  variantId?: ID | undefined;
   quantity: number;
   type: StockMovementType;
   userId: ID;
@@ -190,7 +190,7 @@ export interface PurchaseOrder {
   total: number;
   paid: number;
   createdAt: ISODate;
-  receivedAt?: ISODate;
+  receivedAt?: ISODate | undefined;
 }
 
 export interface Customer {
@@ -248,7 +248,7 @@ export type OrderStatus =
 export interface OrderItem {
   id: ID;
   productId: ID;
-  variantId?: ID;
+  variantId?: ID | undefined;
   productName: string;
   quantity: number;
   unitPrice: number;
@@ -282,7 +282,7 @@ export interface Order {
   paymentState: PaymentState;
   notes: string;
   status: OrderStatus;
-  driverId?: ID;
+  driverId?: ID | undefined;
   createdAt: ISODate;
   history: OrderEvent[];
 }
@@ -292,10 +292,10 @@ export interface Delivery {
   orderId: ID;
   driverId: ID;
   status: Extract<OrderStatus, "assignee" | "en_livraison" | "livree" | "echec" | "retour">;
-  proof?: string;
+  proof?: string | undefined;
   collectedAmount: number;
   createdAt: ISODate;
-  closedAt?: ISODate;
+  closedAt?: ISODate | undefined;
 }
 
 /* ----------------------------------- Ventes --------------------------------- */
@@ -303,7 +303,7 @@ export interface Delivery {
 export interface SaleItem {
   id: ID;
   productId: ID;
-  variantId?: ID;
+  variantId?: ID | undefined;
   productName: string;
   quantity: number;
   unitPrice: number;
@@ -316,7 +316,7 @@ export interface Sale {
   posteId: ID;
   userId: ID;
   userName: string;
-  customerId?: ID;
+  customerId?: ID | undefined;
   customerName: string;
   items: SaleItem[];
   subtotal: number;
@@ -369,11 +369,11 @@ export interface CashSession {
   posteId: ID;
   openedBy: string;
   openingAmount: number;
-  closingAmount?: number;
+  closingAmount?: number | undefined;
   expectedAmount: number;
   status: "ouverte" | "cloturee";
   openedAt: ISODate;
-  closedAt?: ISODate;
+  closedAt?: ISODate | undefined;
 }
 
 /* -------------------------------- Paramètres -------------------------------- */

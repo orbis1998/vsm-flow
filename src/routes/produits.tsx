@@ -44,7 +44,7 @@ function ProductsPage() {
   );
 
   const save = async () => {
-    if (!form.name || !form.categoryId) return toast.error("Nom et catégorie requis");
+    if (!form.name || !form.categoryId) { toast.error("Nom et catégorie requis"); return; }
     const sku = `VSM-${Math.floor(Math.random() * 90000) + 10000}`;
     await productsService.create({
       name: form.name,
