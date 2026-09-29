@@ -2,22 +2,25 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Minus, Plus, ScanLine, Trash2 } from "lucide-react";
-import { useAppState } from "@/mock/store";
-import { money } from "@/lib/format";
+import { useAppState } from "@/lib/app-store";
+import { moneyCdf, moneyUsd } from "@/lib/format";
+import { APP_NAME } from "@/lib/brand";
+import { variantLabel } from "@/lib/variants";
 import { salesService } from "@/services";
 import { useSession } from "@/hooks/useSession";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Forbidden, PageHeader } from "@/components/common/ui-bits";
-import type { Product } from "@/types";
+import type { Product, ProductVariant } from "@/types";
 
 export const Route = createFileRoute("/pos")({
   head: () => ({
     meta: [
-      { title: "Point de vente — VSM Business Suite" },
+      { title: `Point de vente — ${APP_NAME}` },
       { name: "description", content: "Caisse rapide avec recherche, scan de code-barres et ticket." },
-      { property: "og:title", content: "Point de vente — VSM Business Suite" },
+      { property: "og:title", content: `Point de vente — ${APP_NAME}` },
       { property: "og:description", content: "Caisse rapide avec recherche et scan de code-barres." },
     ],
   }),
@@ -33,18 +36,32 @@ function PosPage() {
   const [q, setQ] = useState("");
   const [cart, setCart] = useState<Line[]>([]);
   const [discount, setDiscount] = useState(0);
+  const company = useAppState((s) => s.company);
+  const [receivedUsd, setReceivedUsd] = useState(0);
+  const [receivedCdf, setReceivedCdf] = useState(0);
   const [customer, setCustomer] = useState("Client comptoir");
+  const [pick, setPick] = useState<Product | null>(null);
   if (!can("pos.use")) return <Forbidden />;
 
   const price = (p: Product) => p.promoPrice ?? p.salePrice;
-  const add = (p: Product) => {
-    const v = p.variants.find((x) => x.stock > 0);
-    if (!v) { toast.error("Rupture de stock"); return; }
+  const pushLine = (p: Product, v: ProductVariant) => {
     setCart((c) => {
       const ex = c.find((l) => l.variantId === v.id);
       if (ex) return c.map((l) => (l.variantId === v.id ? { ...l, qty: l.qty + 1 } : l));
       return [...c, { product: p, variantId: v.id, qty: 1 }];
     });
+  };
+  const add = (p: Product) => {
+    const available = p.variants.filter((x) => x.stock > 0);
+    if (available.length === 0) {
+      toast.error("Rupture de stock");
+      return;
+    }
+    if (available.length === 1) {
+      pushLine(p, available[0]!);
+      return;
+    }
+    setPick(p);
   };
   const list = products.filter((p) => `${p.name} ${p.sku} ${p.barcode}`.toLowerCase().includes(q.toLowerCase()));
   const subtotal = cart.reduce((s, l) => s + price(l.product) * l.qty, 0);
@@ -54,17 +71,23 @@ function PosPage() {
     if (p) { add(p); setQ(""); } else toast.error("Code introuvable");
   };
 
+  const total = Math.max(0, subtotal - discount);
   const checkout = async () => {
     if (!cart.length) return;
+    if (!posteId) { toast.error("Choisissez un poste de vente"); return; }
     const sale = await salesService.create({
       posteId,
       customerName: customer,
       discount,
+      receivedUsd,
+      receivedCdf,
       items: cart.map((l) => ({ productId: l.product.id, variantId: l.variantId, productName: l.product.name, quantity: l.qty, unitPrice: price(l.product), discount: 0 })),
     });
-    toast.success(`Vente ${sale.reference} — ${money(sale.total)}`);
+    toast.success(`Vente ${sale.reference}`);
     setCart([]);
     setDiscount(0);
+    setReceivedUsd(0);
+    setReceivedCdf(0);
   };
 
   return (
@@ -83,7 +106,7 @@ function PosPage() {
                 <button key={p.id} onClick={() => add(p)} disabled={st === 0} className="rounded-md border bg-card p-3 text-left transition hover:border-primary disabled:opacity-40">
                   <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-sm bg-foreground text-xs font-bold text-background">{p.imageLabel}</div>
                   <div className="line-clamp-2 text-sm font-medium">{p.name}</div>
-                  <div className="mt-1 flex justify-between text-xs"><span className="num font-bold text-primary">{money(price(p))}</span><span className="text-muted-foreground">{st} en stock</span></div>
+                  <div className="mt-1 flex justify-between text-xs"><span className="num font-bold text-primary">{moneyUsd(price(p))}</span><span className="text-muted-foreground">{st} en stock</span></div>
                 </button>
               );
             })}
@@ -96,7 +119,7 @@ function PosPage() {
             {cart.length === 0 && <p className="text-sm text-muted-foreground">Panier vide.</p>}
             {cart.map((l) => (
               <div key={l.variantId} className="flex items-center gap-2 text-sm">
-                <div className="min-w-0 flex-1"><div className="truncate">{l.product.name}</div><div className="num text-xs text-muted-foreground">{money(price(l.product))}</div></div>
+                <div className="min-w-0 flex-1"><div className="truncate">{l.product.name}</div><div className="num text-xs text-muted-foreground">{moneyUsd(price(l.product))} · {variantLabel(l.product.variants.find((v) => v.id === l.variantId)?.options)}</div></div>
                 <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => setCart((c) => c.map((x) => (x.variantId === l.variantId ? { ...x, qty: Math.max(1, x.qty - 1) } : x)))}><Minus className="h-3 w-3" /></Button>
                 <span className="num w-6 text-center">{l.qty}</span>
                 <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => setCart((c) => c.map((x) => (x.variantId === l.variantId ? { ...x, qty: x.qty + 1 } : x)))}><Plus className="h-3 w-3" /></Button>
@@ -104,14 +127,49 @@ function PosPage() {
               </div>
             ))}
             <div className="space-y-1 border-t pt-3 text-sm">
-              <div className="flex justify-between"><span>Sous-total</span><span className="num">{money(subtotal)}</span></div>
+              <div className="flex justify-between"><span>Sous-total</span><span className="num">{moneyUsd(subtotal)}</span></div>
               <div className="flex items-center justify-between"><span>Remise</span><Input type="number" className="h-8 w-24 text-right" value={discount} onChange={(e) => setDiscount(Math.max(0, +e.target.value))} /></div>
-              <div className="flex justify-between text-lg font-bold"><span>Total</span><span className="num">{money(Math.max(0, subtotal - discount))}</span></div>
+              <div className="flex justify-between text-lg font-bold"><span>Total USD</span><span className="num">{moneyUsd(total)}</span></div>
+              <p className="text-xs text-muted-foreground">≈ {moneyCdf(total * (company.usdCdfRate || 2800))}</p>
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <div>
+                  <div className="text-xs text-muted-foreground">Reçu USD</div>
+                  <Input type="number" className="h-9" value={receivedUsd} onChange={(e) => setReceivedUsd(+e.target.value)} />
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Reçu CDF</div>
+                  <Input type="number" className="h-9" value={receivedCdf} onChange={(e) => setReceivedCdf(+e.target.value)} />
+                </div>
+              </div>
             </div>
             <Button className="w-full" size="lg" disabled={!cart.length} onClick={checkout}>Encaisser</Button>
           </CardContent>
         </Card>
       </div>
+      <Dialog open={!!pick} onOpenChange={(o) => !o && setPick(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Choisir une variante</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-2">
+            {pick?.variants.map((v) => (
+              <Button
+                key={v.id}
+                variant="outline"
+                className="justify-between"
+                disabled={v.stock <= 0}
+                onClick={() => {
+                  pushLine(pick, v);
+                  setPick(null);
+                }}
+              >
+                <span>{variantLabel(v.options)}</span>
+                <span className="text-xs text-muted-foreground">{v.stock} en stock</span>
+              </Button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

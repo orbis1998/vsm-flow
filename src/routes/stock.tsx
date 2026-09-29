@@ -1,9 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
-import { useAppState } from "@/mock/store";
-import { productStock } from "@/mock/seed";
+import { useAppState } from "@/lib/app-store";
+import { productStock } from "@/lib/catalog";
 import { dateTime, money, num } from "@/lib/format";
+import { APP_NAME } from "@/lib/brand";
 import { stockService } from "@/services";
 import { useSession } from "@/hooks/useSession";
 import { Button } from "@/components/ui/button";
@@ -18,9 +19,9 @@ import type { StockMovementType } from "@/types";
 export const Route = createFileRoute("/stock")({
   head: () => ({
     meta: [
-      { title: "Stock — VSM Business Suite" },
+      { title: `Stock — ${APP_NAME}` },
       { name: "description", content: "Niveaux de stock, alertes et mouvements d'entrée et de sortie." },
-      { property: "og:title", content: "Stock — VSM Business Suite" },
+      { property: "og:title", content: `Stock — ${APP_NAME}` },
       { property: "og:description", content: "Niveaux de stock, alertes et mouvements." },
     ],
   }),

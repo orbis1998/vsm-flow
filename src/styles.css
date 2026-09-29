@@ -5,8 +5,8 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * Design system VSM Business Suite.
- * Noir, blanc, gris très clair + rouge VSM comme accent unique.
+ * Design system Business Suite.
+ * Noir, blanc, gris très clair + rouge comme accent unique.
  * Toutes les couleurs sont des tokens sémantiques en oklch.
  */
 
@@ -59,7 +59,7 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
   --font-sans:
-    "Inter Tight", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+    "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
@@ -75,7 +75,7 @@
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.15 0 0);
 
-  /* Rouge VSM */
+  /* Accent */
   --primary: oklch(0.55 0.215 27.5);
   --primary-foreground: oklch(0.99 0 0);
 
@@ -167,13 +167,17 @@
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.5;
     -webkit-font-smoothing: antialiased;
+    letter-spacing: -0.011em;
   }
 
   h1,
   h2,
   h3 {
-    letter-spacing: -0.015em;
+    letter-spacing: -0.02em;
+    font-weight: 600;
   }
 }
 

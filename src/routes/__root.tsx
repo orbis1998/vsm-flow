@@ -3,14 +3,19 @@ import {
   Outlet,
   Link,
   createRootRouteWithContext,
+  useNavigate,
   useRouter,
+  useRouterState,
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { SessionProvider } from "@/hooks/useSession";
 import { AppShell } from "@/components/layout/AppShell";
+import { AppDataGate } from "@/lib/app-store";
+import { loadSession } from "@/lib/session";
+import { APP_NAME } from "@/lib/brand";
 import { Toaster } from "@/components/ui/sonner";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -80,13 +85,17 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "VSM Business Suite" },
-      { name: "description", content: "ERP commerce et livraison de VSM Collection à Kinshasa." },
-      { property: "og:title", content: "VSM Business Suite" },
-      { property: "og:description", content: "ERP commerce et livraison de VSM Collection à Kinshasa." },
+      { title: APP_NAME },
+      { name: "description", content: "ERP commerce, stock et livraison." },
+      { property: "og:title", content: APP_NAME },
+      { property: "og:description", content: "ERP commerce, stock et livraison." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:site", content: "@businesssuite" },
+      { name: "theme-color", content: "#c41e3a" },
+      { name: "apple-mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-title", content: APP_NAME },
+      { name: "mobile-web-app-capable", content: "yes" },
     ],
     links: [
       {
@@ -96,9 +105,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       {
         rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500&display=swap",
+        href: "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap",
       },
       { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
+      { rel: "manifest", href: "/manifest.webmanifest" },
+      { rel: "apple-touch-icon", href: "/icon.svg" },
     ],
   }),
   shellComponent: RootShell,
@@ -108,6 +119,17 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 });
 
 function RootShell({ children }: { children: ReactNode }) {
+  useEffect(() => {
+    if (!import.meta.env.PROD) {
+      navigator.serviceWorker?.getRegistrations().then((regs) => {
+        for (const reg of regs) void reg.unregister();
+      });
+      return;
+    }
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+    }
+  }, []);
   return (
     <html lang="fr">
       <head>
@@ -121,18 +143,53 @@ function RootShell({ children }: { children: ReactNode }) {
   );
 }
 
+function SessionGate({ children }: { children: ReactNode }) {
+  const navigate = useNavigate();
+  const [allowed, setAllowed] = useState(false);
+
+  useEffect(() => {
+    if (!loadSession()?.userId) {
+      navigate({ to: "/login" });
+      return;
+    }
+    setAllowed(true);
+  }, [navigate]);
+
+  if (!allowed) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <p className="text-sm text-muted-foreground">Redirection…</p>
+      </div>
+    );
+  }
+
+  return children;
+}
+
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const path = useRouterState({ select: (s) => s.location.pathname });
+  const isLogin = path === "/login";
 
   return (
     <QueryClientProvider client={queryClient}>
-      {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-      <SessionProvider>
-        <AppShell>
+      {isLogin ? (
+        <>
           <Outlet />
-        </AppShell>
-        <Toaster richColors position="top-right" />
-      </SessionProvider>
+          <Toaster richColors position="top-right" />
+        </>
+      ) : (
+        <SessionGate>
+          <AppDataGate>
+            <SessionProvider>
+              <AppShell>
+                <Outlet />
+              </AppShell>
+              <Toaster richColors position="top-right" />
+            </SessionProvider>
+          </AppDataGate>
+        </SessionGate>
+      )}
     </QueryClientProvider>
   );
 }

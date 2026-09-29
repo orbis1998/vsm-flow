@@ -1,6 +1,5 @@
 import type { Commune, DeliveryZone } from "@/types";
 
-// Les 24 communes de Kinshasa, avec des zones/quartiers réalistes.
 const RAW: Array<[string, string[], number]> = [
   ["Gombe", ["Centre-ville", "Ma Campagne", "Beach Ngobila", "Place Royale"], 3],
   ["Kinshasa", ["Kato", "Pétrole", "Madimba", "Boyata"], 3],

@@ -1,6 +1,8 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
-import { ROLES } from "@/mock/roles";
-import { useAppState } from "@/mock/store";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useNavigate, useRouterState } from "@tanstack/react-router";
+import { ROLES } from "@/lib/roles";
+import { useAppState } from "@/lib/app-store";
+import { clearSession, loadSession, saveSession } from "@/lib/session";
 import type { Permission, RoleCode, User } from "@/types";
 
 interface SessionValue {
@@ -9,33 +11,76 @@ interface SessionValue {
   permissions: Permission[];
   posteId: string;
   setPosteId: (id: string) => void;
-  /** Changement de rôle simulé : permet de visualiser l'app comme un autre profil. */
-  impersonate: (userId: string) => void;
+  logout: () => void;
   can: (permission: Permission) => boolean;
 }
 
 const SessionContext = createContext<SessionValue | null>(null);
 
+const GUEST: User = {
+  id: "",
+  fullName: "",
+  email: "",
+  phone: "",
+  badge: "",
+  role: "ADMIN",
+  status: "inactif",
+  extraPermissions: [],
+  createdAt: new Date().toISOString(),
+};
+
 export function SessionProvider({ children }: { children: ReactNode }) {
   const users = useAppState((s) => s.users);
-  const [userId, setUserId] = useState("usr-1");
-  const [posteId, setPosteId] = useState("pos-1");
+  const postes = useAppState((s) => s.postes);
+  const navigate = useNavigate();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const [userId, setUserId] = useState<string | null>(null);
+  const [posteId, setPosteId] = useState("");
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    const s = loadSession();
+    setUserId(s?.userId ?? null);
+    setReady(true);
+  }, []);
+
+  const user = users.find((u) => u.id === userId) ?? null;
+
+  useEffect(() => {
+    if (!ready) return;
+    if (pathname === "/login") return;
+    if (!userId || !user) {
+      navigate({ to: "/login" });
+    }
+  }, [ready, userId, user, pathname, navigate]);
+
+  useEffect(() => {
+    if (user?.posteId) setPosteId(user.posteId);
+    else if (postes[0]) setPosteId(postes[0].id);
+  }, [user, postes]);
 
   const value = useMemo<SessionValue>(() => {
-    const user = users.find((u) => u.id === userId) ?? users[0]!;
-    const permissions = [
-      ...new Set([...ROLES[user.role].permissions, ...user.extraPermissions]),
-    ];
+    const current = user ?? GUEST;
+    const permissions = current.id
+      ? [...new Set([...ROLES[current.role].permissions, ...current.extraPermissions])]
+      : [];
     return {
-      user,
-      role: user.role,
+      user: current,
+      role: current.role,
       permissions,
       posteId,
       setPosteId,
-      impersonate: setUserId,
+      logout: () => {
+        clearSession();
+        setUserId(null);
+        navigate({ to: "/login" });
+      },
       can: (permission) => permissions.includes(permission),
     };
-  }, [users, userId, posteId]);
+  }, [user, posteId, navigate]);
+
+  if (!ready) return null;
+  if (pathname !== "/login" && (!userId || !user)) return null;
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }
@@ -45,3 +90,5 @@ export function useSession(): SessionValue {
   if (!ctx) throw new Error("useSession doit être utilisé dans un SessionProvider");
   return ctx;
 }
+
+export { saveSession };

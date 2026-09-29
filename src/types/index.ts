@@ -1,6 +1,5 @@
-// Modèle de données VSM Business Suite.
-// Ces types sont la source de vérité : les services mock les implémentent
-// aujourd'hui, une API/Supabase les implémentera plus tard sans changer l'UI.
+// Modèle de données Business Suite.
+// Source de vérité partagée par l'UI et la couche Postgres.
 
 export type ID = string;
 export type ISODate = string;
@@ -56,6 +55,7 @@ export interface User {
   fullName: string;
   email: string;
   phone: string;
+  badge: string;
   role: RoleCode;
   status: UserStatus;
   posteId?: ID | undefined;
@@ -81,6 +81,8 @@ export interface AppNotification {
   level: "info" | "alerte" | "critique";
   read: boolean;
   createdAt: ISODate;
+  userId?: ID | undefined;
+  href?: string | undefined;
 }
 
 /* --------------------------------- Catalogue -------------------------------- */
@@ -96,6 +98,11 @@ export interface Brand {
   name: string;
 }
 
+export interface ProductOption {
+  name: string;
+  values: string[];
+}
+
 export interface ProductVariant {
   id: ID;
   productId: ID;
@@ -104,6 +111,7 @@ export interface ProductVariant {
   size?: string | undefined;
   color?: string | undefined;
   model?: string | undefined;
+  options: Record<string, string>;
   stock: number;
   reserved: number;
   sold: number;
@@ -129,6 +137,7 @@ export interface Product {
   imageLabel: string;
   lotNumber?: string | undefined;
   expiryDate?: ISODate | undefined;
+  options: ProductOption[];
   variants: ProductVariant[];
   createdAt: ISODate;
 }
@@ -283,6 +292,8 @@ export interface Order {
   notes: string;
   status: OrderStatus;
   driverId?: ID | undefined;
+  receivedUsd: number;
+  receivedCdf: number;
   createdAt: ISODate;
   history: OrderEvent[];
 }
@@ -322,6 +333,8 @@ export interface Sale {
   subtotal: number;
   discount: number;
   total: number;
+  receivedUsd: number;
+  receivedCdf: number;
   createdAt: ISODate;
 }
 
@@ -333,7 +346,9 @@ export type ExpenseCategory =
   | "salaires"
   | "marketing"
   | "fournitures"
-  | "divers";
+  | "divers"
+  | "restock"
+  | "forfait";
 
 export interface Expense {
   id: ID;
@@ -392,6 +407,7 @@ export interface CompanySettings {
   email: string;
   address: string;
   currency: string;
+  usdCdfRate: number;
   defaultDeliveryFee: number;
   lowStockAlert: boolean;
 }

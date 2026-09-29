@@ -1,10 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Plus, Trash2 } from "lucide-react";
-import { useAppState } from "@/mock/store";
-import { communeName, zoneName, zonesOfCommune, COMMUNES, ZONES } from "@/mock/geo";
-import { money, dateTime, ORDER_STATUS_LABEL, ORDER_STATUS_ORDER } from "@/lib/format";
+import { useAppState } from "@/lib/app-store";
+import { communeName, zoneName } from "@/lib/geo";
+import { dateTime, moneyCdf, moneyUsd, ORDER_STATUS_LABEL, ORDER_STATUS_ORDER } from "@/lib/format";
+import { APP_NAME } from "@/lib/brand";
+import { variantLabel } from "@/lib/variants";
 import { ordersService } from "@/services";
 import { useSession } from "@/hooks/useSession";
 import { Button } from "@/components/ui/button";
@@ -16,14 +18,14 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Empty, Forbidden, OrderStatusBadge, PageHeader } from "@/components/common/ui-bits";
-import type { Order, OrderStatus } from "@/types";
+import type { Order, OrderItem, OrderStatus } from "@/types";
 
 export const Route = createFileRoute("/commandes")({
   head: () => ({
     meta: [
-      { title: "Commandes — VSM Business Suite" },
+      { title: `Commandes — ${APP_NAME}` },
       { name: "description", content: "Saisie, suivi et assignation des commandes de livraison à Kinshasa." },
-      { property: "og:title", content: "Commandes — VSM Business Suite" },
+      { property: "og:title", content: `Commandes — ${APP_NAME}` },
       { property: "og:description", content: "Saisie, suivi et assignation des commandes de livraison." },
     ],
   }),
@@ -85,7 +87,8 @@ function OrdersPage() {
                 <TableHead>Référence</TableHead>
                 <TableHead>Client</TableHead>
                 <TableHead className="hidden md:table-cell">Commune</TableHead>
-                <TableHead className="text-right">À encaisser</TableHead>
+                <TableHead className="text-right">Marchandise</TableHead>
+                <TableHead className="hidden text-right md:table-cell">Livraison CDF</TableHead>
                 <TableHead>Statut</TableHead>
               </TableRow>
             </TableHeader>
@@ -98,7 +101,8 @@ function OrdersPage() {
                     <div className="text-xs text-muted-foreground">{o.phone}</div>
                   </TableCell>
                   <TableCell className="hidden md:table-cell">{communeName(o.communeId)}</TableCell>
-                  <TableCell className="num text-right font-semibold">{money(o.totalToCollect)}</TableCell>
+                  <TableCell className="num text-right font-semibold">{moneyUsd(o.productsTotal)}</TableCell>
+                  <TableCell className="num hidden text-right md:table-cell">{moneyCdf(o.deliveryFee)}</TableCell>
                   <TableCell><OrderStatusBadge status={o.status} /></TableCell>
                 </TableRow>
               ))}
@@ -115,6 +119,17 @@ function OrdersPage() {
 function OrderSheet({ order, onClose }: { order: Order | null; onClose: () => void }) {
   const { can } = useSession();
   const drivers = useAppState((s) => s.drivers.filter((d) => d.active));
+  const products = useAppState((s) => s.products);
+  const [receivedUsd, setReceivedUsd] = useState(0);
+  const [receivedCdf, setReceivedCdf] = useState(0);
+  const [draft, setDraft] = useState<OrderItem[]>([]);
+
+  useEffect(() => {
+    setReceivedUsd(order?.receivedUsd ?? 0);
+    setReceivedCdf(order?.receivedCdf ?? 0);
+    setDraft(order?.items ?? []);
+  }, [order?.id, order?.receivedUsd, order?.receivedCdf, order?.items]);
+
   return (
     <Sheet open={!!order} onOpenChange={(o) => !o && onClose()}>
       <SheetContent className="w-full overflow-y-auto sm:max-w-lg">
@@ -135,19 +150,97 @@ function OrderSheet({ order, onClose }: { order: Order | null; onClose: () => vo
                 {order.landmark && <div className="text-muted-foreground">Repère : {order.landmark}</div>}
               </div>
               <div className="rounded-md border">
-                {order.items.map((it) => (
-                  <div key={it.id} className="flex justify-between border-b px-3 py-2 last:border-0">
-                    <span>{it.quantity} × {it.productName}</span>
-                    <span className="num">{money(it.quantity * it.unitPrice - it.discount)}</span>
-                  </div>
-                ))}
-                <div className="flex justify-between px-3 py-2 text-muted-foreground">
-                  <span>Livraison</span><span className="num">{money(order.deliveryFee)}</span>
+                {draft.map((it, idx) => {
+                  const product = products.find((p) => p.id === it.productId);
+                  return (
+                    <div key={it.id || idx} className="border-b px-3 py-2 last:border-0">
+                      <div className="flex justify-between gap-2">
+                        <span className="min-w-0 truncate">{it.quantity} × {it.productName}</span>
+                        <span className="num shrink-0">{moneyUsd(it.quantity * it.unitPrice - it.discount)}</span>
+                      </div>
+                      {can("orders.manage") && product && product.variants.length > 0 && (
+                        <div className="mt-1 flex items-center gap-2">
+                          <Select
+                            value={it.variantId ?? product.variants[0]?.id ?? ""}
+                            onValueChange={(v) => {
+                              const variant = product.variants.find((x) => x.id === v);
+                              const name = variant ? `${product.name} (${variantLabel(variant.options)})` : product.name;
+                              setDraft((rows) => rows.map((r, i) => (i === idx ? { ...r, variantId: v, productName: name } : r)));
+                            }}
+                          >
+                            <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {product.variants.map((v) => (
+                                <SelectItem key={v.id} value={v.id}>
+                                  {variantLabel(v.options)} · stock {v.stock}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Input
+                            type="number"
+                            className="h-8 w-16"
+                            min={1}
+                            value={it.quantity}
+                            onChange={(e) =>
+                              setDraft((rows) =>
+                                rows.map((r, i) => (i === idx ? { ...r, quantity: Math.max(1, +e.target.value) } : r)),
+                              )
+                            }
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                <div className="flex justify-between px-3 py-2 font-semibold">
+                  <span>Marchandise</span><span className="num">{moneyUsd(order.productsTotal)}</span>
                 </div>
-                <div className="flex justify-between bg-muted px-3 py-2 font-bold">
-                  <span>Total à encaisser</span><span className="num">{money(order.totalToCollect)}</span>
+                <div className="flex justify-between px-3 py-2 text-muted-foreground">
+                  <span>Livraison (CDF, hors CA)</span><span className="num">{moneyCdf(order.deliveryFee)}</span>
                 </div>
               </div>
+              {can("orders.manage") && (
+                <p className="text-xs text-muted-foreground">
+                  Si le client prend une autre taille (XL → XXL), changez la variante puis enregistrez : le stock bascule.
+                </p>
+              )}
+              {can("orders.manage") && (
+                <Button
+                  variant="secondary"
+                  onClick={async () => {
+                    await ordersService.replaceItems(
+                      order.id,
+                      draft.map(({ id: _id, ...rest }) => rest),
+                    );
+                    toast.success("Articles et stock mis à jour");
+                  }}
+                >
+                  Enregistrer la correction
+                </Button>
+              )}
+              {(can("orders.manage") || can("driver.space")) && (
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label>Reçu USD</Label>
+                    <Input type="number" value={receivedUsd} onChange={(e) => setReceivedUsd(+e.target.value)} />
+                  </div>
+                  <div>
+                    <Label>Reçu CDF</Label>
+                    <Input type="number" value={receivedCdf} onChange={(e) => setReceivedCdf(+e.target.value)} />
+                  </div>
+                  <Button
+                    className="col-span-2"
+                    variant="outline"
+                    onClick={async () => {
+                      await ordersService.collectPayment(order.id, receivedUsd, receivedCdf);
+                      toast.success("Encaissement enregistré");
+                    }}
+                  >
+                    Enregistrer l'encaissement
+                  </Button>
+                </div>
+              )}
               {can("orders.manage") && (
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div>
@@ -221,16 +314,19 @@ function OrderSheet({ order, onClose }: { order: Order | null; onClose: () => vo
 function NewOrderDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const customers = useAppState((s) => s.customers);
   const products = useAppState((s) => s.products);
+  const communes = useAppState((s) => s.communes);
+  const zones = useAppState((s) => s.zones);
+  const zonesOf = (cid: string) => zones.filter((z) => z.communeId === cid);
   const [customerId, setCustomerId] = useState("");
-  const [communeId, setCommuneId] = useState(COMMUNES[0]!.id);
-  const [zoneId, setZoneId] = useState(zonesOfCommune(COMMUNES[0]!.id)[0]!.id);
+  const [communeId, setCommuneId] = useState(communes[0]?.id ?? "");
+  const [zoneId, setZoneId] = useState(zonesOf(communes[0]?.id ?? "")[0]?.id ?? "");
   const [address, setAddress] = useState("");
   const [landmark, setLandmark] = useState("");
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<Array<{ productId: string; qty: number }>>([]);
   const [productId, setProductId] = useState("");
 
-  const fee = ZONES.find((z) => z.id === zoneId)?.defaultFee ?? 0;
+  const fee = zones.find((z) => z.id === zoneId)?.defaultFee ?? 0;
   const total = lines.reduce((s, l) => {
     const p = products.find((x) => x.id === l.productId);
     return s + (p ? (p.promoPrice ?? p.salePrice) * l.qty : 0);
@@ -285,16 +381,16 @@ function NewOrderDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>Commune</Label>
-              <Select value={communeId} onValueChange={(v) => { setCommuneId(v); setZoneId(zonesOfCommune(v)[0]!.id); }}>
+              <Select value={communeId} onValueChange={(v) => { setCommuneId(v); setZoneId(zonesOf(v)[0]?.id ?? ""); }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{COMMUNES.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+                <SelectContent>{communes.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div>
               <Label>Quartier</Label>
               <Select value={zoneId} onValueChange={setZoneId}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{zonesOfCommune(communeId).map((z) => <SelectItem key={z.id} value={z.id}>{z.name}</SelectItem>)}</SelectContent>
+                <SelectContent>{zonesOf(communeId).map((z) => <SelectItem key={z.id} value={z.id}>{z.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
           </div>
@@ -305,7 +401,7 @@ function NewOrderDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
             <div className="flex gap-2">
               <Select value={productId} onValueChange={setProductId}>
                 <SelectTrigger><SelectValue placeholder="Ajouter un produit" /></SelectTrigger>
-                <SelectContent>{products.map((p) => <SelectItem key={p.id} value={p.id}>{p.name} — {money(p.promoPrice ?? p.salePrice)}</SelectItem>)}</SelectContent>
+                <SelectContent>{products.map((p) => <SelectItem key={p.id} value={p.id}>{p.name} — {moneyUsd(p.promoPrice ?? p.salePrice)}</SelectItem>)}</SelectContent>
               </Select>
               <Button type="button" variant="outline" onClick={() => productId && setLines((l) => [...l, { productId, qty: 1 }])}>Ajouter</Button>
             </div>
@@ -321,9 +417,8 @@ function NewOrderDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
           </div>
           <div><Label>Notes</Label><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} /></div>
           <div className="rounded-md bg-muted p-3 text-sm">
-            <div className="flex justify-between"><span>Produits</span><span className="num">{money(total)}</span></div>
-            <div className="flex justify-between"><span>Livraison</span><span className="num">{money(fee)}</span></div>
-            <div className="flex justify-between font-bold"><span>Total</span><span className="num">{money(total + fee)}</span></div>
+            <div className="flex justify-between"><span>Marchandise</span><span className="num">{moneyUsd(total)}</span></div>
+            <div className="flex justify-between"><span>Livraison (CDF, hors CA)</span><span className="num">{moneyCdf(fee)}</span></div>
           </div>
         </div>
         <DialogFooter><Button onClick={submit}>Enregistrer</Button></DialogFooter>

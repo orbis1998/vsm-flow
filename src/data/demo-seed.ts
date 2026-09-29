@@ -1,4 +1,4 @@
-import { COMMUNES, ZONES } from "./geo";
+import { COMMUNES, ZONES } from "../lib/geo";
 import type {
   AppNotification,
   AuditLog,
@@ -26,7 +26,7 @@ import type {
   Supplier,
   Unit,
   User,
-} from "@/types";
+} from "../types";
 
 /**
  * Données de démonstration déterministes.
@@ -281,7 +281,7 @@ export const PRODUCTS: Product[] = PRODUCT_DEFS.map(
         variants.push({
           id: `${id}-v${seq}`,
           productId: id,
-          sku: `${sku}-${size ?? "U"}${color ? color.slice(0, 2).toUpperCase() : ""}`,
+          sku: `${sku}-v${pad(seq, 2)}`,
           barcode: barcode(i * 40 + seq),
           size,
           color,
@@ -317,10 +317,6 @@ export const PRODUCTS: Product[] = PRODUCT_DEFS.map(
     };
   },
 );
-
-export function productStock(p: Product): number {
-  return p.variants.reduce((s, v) => s + v.stock, 0);
-}
 
 /* --------------------------------- Clients --------------------------------- */
 

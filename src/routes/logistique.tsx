@@ -1,8 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { useAppState } from "@/mock/store";
-import { communeName, zoneName } from "@/mock/geo";
+import { useAppState } from "@/lib/app-store";
+import { communeName, zoneName } from "@/lib/geo";
 import { money } from "@/lib/format";
+import { APP_NAME } from "@/lib/brand";
 import { ordersService } from "@/services";
 import { useSession } from "@/hooks/useSession";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,9 +14,9 @@ import { Forbidden, OrderStatusBadge, PageHeader, StatCard } from "@/components/
 export const Route = createFileRoute("/logistique")({
   head: () => ({
     meta: [
-      { title: "Logistique — VSM Business Suite" },
+      { title: `Logistique — ${APP_NAME}` },
       { name: "description", content: "Assignation des livreurs et suivi des tournées dans Kinshasa." },
-      { property: "og:title", content: "Logistique — VSM Business Suite" },
+      { property: "og:title", content: `Logistique — ${APP_NAME}` },
       { property: "og:description", content: "Assignation des livreurs et suivi des tournées." },
     ],
   }),

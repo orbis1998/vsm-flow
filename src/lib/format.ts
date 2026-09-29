@@ -1,13 +1,26 @@
-import type { OrderStatus } from "@/types";
+import type { ExpenseCategory, OrderStatus } from "@/types";
 
-export const CURRENCY = "USD";
-
-export function money(amount: number): string {
+export function money(amount: number, currency: "USD" | "CDF" = "USD"): string {
+  if (currency === "CDF") {
+    return new Intl.NumberFormat("fr-FR", {
+      style: "currency",
+      currency: "CDF",
+      maximumFractionDigits: 0,
+    }).format(amount);
+  }
   return new Intl.NumberFormat("fr-FR", {
     style: "currency",
-    currency: CURRENCY,
+    currency: "USD",
     maximumFractionDigits: 2,
   }).format(amount);
+}
+
+export function moneyUsd(amount: number): string {
+  return money(amount, "USD");
+}
+
+export function moneyCdf(amount: number): string {
+  return money(amount, "CDF");
 }
 
 export function num(value: number): string {
@@ -33,6 +46,36 @@ export function dateTime(iso: string): string {
     minute: "2-digit",
   }).format(new Date(iso));
 }
+
+export function kinshasaYmd(d: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Africa/Kinshasa",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+}
+
+export function ymdOf(iso: string): string {
+  return kinshasaYmd(new Date(iso));
+}
+
+export function addDaysYmd(n: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  return kinshasaYmd(d);
+}
+
+export const EXPENSE_LABEL: Record<ExpenseCategory, string> = {
+  restock: "Restock / achats",
+  salaires: "Salaires personnel",
+  loyer: "Loyer",
+  forfait: "Forfaits",
+  divers: "Dépenses personnelles",
+  transport: "Transport",
+  marketing: "Marketing",
+  fournitures: "Fournitures",
+};
 
 export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
   nouvelle: "Nouvelle",

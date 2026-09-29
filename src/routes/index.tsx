@@ -1,115 +1,228 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { useAppState } from "@/mock/store";
-import { productStock } from "@/mock/seed";
-import { communeName } from "@/mock/geo";
-import { money, num, dateTime } from "@/lib/format";
+import { createFileRoute } from "@tanstack/react-router";
+import { useAppState } from "@/lib/app-store";
+import { productStock } from "@/lib/catalog";
+import { addDaysYmd, EXPENSE_LABEL, kinshasaYmd, moneyCdf, moneyUsd, num, pct, ymdOf } from "@/lib/format";
+import { APP_NAME } from "@/lib/brand";
 import { useSession } from "@/hooks/useSession";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Forbidden, OrderStatusBadge, PageHeader, StatCard } from "@/components/common/ui-bits";
+import { Forbidden, PageHeader, StatCard } from "@/components/common/ui-bits";
+import type { ExpenseCategory } from "@/types";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Tableau de bord — VSM Business Suite" },
-      { name: "description", content: "Vue d'ensemble des ventes, commandes, livraisons et stock de VSM Collection." },
-      { property: "og:title", content: "Tableau de bord — VSM Business Suite" },
-      { property: "og:description", content: "Vue d'ensemble des ventes, commandes, livraisons et stock." },
+      { title: `Tableau de bord — ${APP_NAME}` },
+      { name: "description", content: "Gains du jour, comparaison hebdomadaire et dépenses." },
     ],
   }),
   component: Dashboard,
 });
 
+function dayLabel(ymd: string) {
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Date(y!, m! - 1, d!).toLocaleDateString("fr-FR", {
+    weekday: "short",
+    day: "numeric",
+    timeZone: "Africa/Kinshasa",
+  });
+}
+
+function changePct(now: number, prev: number) {
+  if (prev === 0) return now === 0 ? 0 : 100;
+  return ((now - prev) / prev) * 100;
+}
+
 function Dashboard() {
   const { can, user } = useSession();
+  const company = useAppState((s) => s.company);
   const orders = useAppState((s) => s.orders);
   const sales = useAppState((s) => s.sales);
   const products = useAppState((s) => s.products);
   const expenses = useAppState((s) => s.expenses);
+  const purchaseOrders = useAppState((s) => s.purchaseOrders);
   if (!can("dashboard.view")) return <Forbidden />;
 
-  const delivered = orders.filter((o) => o.status === "livree");
-  const revenue = sales.reduce((s, x) => s + x.total, 0) + delivered.reduce((s, o) => s + o.productsTotal, 0);
-  const spent = expenses.reduce((s, e) => s + e.amount, 0);
-  const pending = orders.filter((o) => ["nouvelle", "a_preparer", "prete", "assignee", "en_livraison"].includes(o.status));
-  const low = products.filter((p) => productStock(p) <= p.minStock);
+  const today = kinshasaYmd();
+  const weekAgo = addDaysYmd(-7);
+  const inDay = (iso: string, ymd: string) => ymdOf(iso) === ymd;
+  const merchOn = (ymd: string) =>
+    sales.filter((s) => inDay(s.createdAt, ymd)).reduce((n, s) => n + s.total, 0) +
+    orders.filter((o) => o.status === "livree" && inDay(o.createdAt, ymd)).reduce((n, o) => n + o.productsTotal, 0);
 
-  const byCommune = Object.entries(
-    orders.reduce<Record<string, number>>((acc, o) => {
-      const n = communeName(o.communeId);
-      acc[n] = (acc[n] ?? 0) + 1;
-      return acc;
-    }, {}),
-  )
-    .map(([name, count]) => ({ name, count }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 8);
+  const merchToday = merchOn(today);
+  const merchWeekAgo = merchOn(weekAgo);
+  const delta = changePct(merchToday, merchWeekAgo);
+
+  const weekStart = addDaysYmd(-6);
+  const inWeek = (iso: string) => ymdOf(iso) >= weekStart;
+  const byCat = (cat: ExpenseCategory, todayOnly = false) =>
+    expenses
+      .filter((e) => e.category === cat && (todayOnly ? inDay(e.createdAt, today) : inWeek(e.createdAt)))
+      .reduce((n, e) => n + e.amount, 0);
+  const restockPo = (todayOnly: boolean) =>
+    purchaseOrders
+      .filter((p) => p.status === "recue" && (todayOnly ? inDay(p.createdAt, today) : inWeek(p.createdAt)))
+      .reduce((n, p) => n + p.total, 0);
+
+  const spendRows: Array<[ExpenseCategory | "restock_po", string, number, number]> = [
+    ["restock", EXPENSE_LABEL.restock, byCat("restock", true) + restockPo(true), byCat("restock") + restockPo(false)],
+    ["salaires", EXPENSE_LABEL.salaires, byCat("salaires", true), byCat("salaires")],
+    ["loyer", EXPENSE_LABEL.loyer, byCat("loyer", true), byCat("loyer")],
+    ["forfait", EXPENSE_LABEL.forfait, byCat("forfait", true), byCat("forfait")],
+    ["divers", EXPENSE_LABEL.divers, byCat("divers", true), byCat("divers")],
+    ["transport", EXPENSE_LABEL.transport, byCat("transport", true), byCat("transport")],
+    ["marketing", EXPENSE_LABEL.marketing, byCat("marketing", true), byCat("marketing")],
+    ["fournitures", EXPENSE_LABEL.fournitures, byCat("fournitures", true), byCat("fournitures")],
+  ];
+  const spentToday = spendRows.reduce((n, [, , v]) => n + v, 0);
+  const spentWeek = spendRows.reduce((n, [, , , v]) => n + v, 0);
+  const merchWeek = Array.from({ length: 7 }, (_, i) => merchOn(addDaysYmd(i - 6))).reduce((n, v) => n + v, 0);
+  const netWeek = merchWeek - spentWeek;
+
+  const recUsdToday =
+    sales.filter((s) => inDay(s.createdAt, today)).reduce((n, s) => n + s.receivedUsd, 0) +
+    orders.filter((o) => o.status === "livree" && inDay(o.createdAt, today)).reduce((n, o) => n + o.receivedUsd, 0);
+  const recCdfToday =
+    sales.filter((s) => inDay(s.createdAt, today)).reduce((n, s) => n + s.receivedCdf, 0) +
+    orders.filter((o) => o.status === "livree" && inDay(o.createdAt, today)).reduce((n, o) => n + o.receivedCdf, 0);
+  const feesCdfToday = orders
+    .filter((o) => o.status === "livree" && inDay(o.createdAt, today))
+    .reduce((n, o) => n + o.deliveryFee, 0);
+
+  const chart = Array.from({ length: 7 }, (_, i) => {
+    const ymd = addDaysYmd(i - 6);
+    return { label: dayLabel(ymd), gains: merchOn(ymd) };
+  });
+
+  const low = products.filter((p) => productStock(p) <= p.minStock);
+  const pending = orders.filter((o) =>
+    ["nouvelle", "a_preparer", "prete", "assignee", "en_livraison"].includes(o.status),
+  );
+  const rate = company.usdCdfRate || 2800;
 
   return (
     <div>
-      <PageHeader title={`Bonjour, ${user.fullName.split(" ")[0]}`} subtitle="Activité de VSM Collection" />
+      <PageHeader
+        title={`Bonjour, ${user.fullName.split(" ")[0] || user.badge}`}
+        subtitle={`${company.name || APP_NAME} · activité du ${dayLabel(today)}`}
+      />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard label="Chiffre d'affaires" value={money(revenue)} hint="Ventes POS + livraisons" accent />
-        <StatCard label="Dépenses" value={money(spent)} />
-        <StatCard label="Commandes en cours" value={num(pending.length)} hint={`${delivered.length} livrées`} />
-        <StatCard label="Stock bas" value={num(low.length)} hint="produits sous le seuil" />
+        <StatCard
+          label="Gains aujourd'hui"
+          value={moneyUsd(merchToday)}
+          hint={`${moneyCdf(merchToday * rate)} · hors frais livraison`}
+          accent
+        />
+        <StatCard
+          label="Il y a 7 jours"
+          value={moneyUsd(merchWeekAgo)}
+          hint={
+            <span className={delta >= 0 ? "text-foreground" : "text-destructive"}>
+              {delta >= 0 ? "+" : ""}
+              {pct(delta)} vs aujourd'hui
+            </span>
+          }
+        />
+        <StatCard label="Dépenses aujourd'hui" value={moneyUsd(spentToday)} hint={`${moneyUsd(spentWeek)} sur 7 jours`} />
+        <StatCard
+          label="Résultat 7 jours"
+          value={moneyUsd(netWeek)}
+          hint={`${moneyUsd(merchWeek)} de ventes marchandise`}
+        />
       </div>
 
-      <div className="mt-6 grid gap-4 lg:grid-cols-3">
+      <div className="mt-6 grid gap-4 lg:grid-cols-5">
+        <Card className="rounded-md lg:col-span-3">
+          <CardHeader>
+            <CardTitle className="text-base">Ventes marchandise (7 jours)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex h-40 items-end gap-2">
+              {chart.map((d) => {
+                const max = Math.max(...chart.map((x) => x.gains), 1);
+                const h = Math.max(4, Math.round((d.gains / max) * 100));
+                return (
+                  <div key={d.label} className="flex min-w-0 flex-1 flex-col items-center gap-1">
+                    <div className="flex h-32 w-full items-end">
+                      <div className="w-full rounded-t-sm bg-primary" style={{ height: `${h}%` }} title={moneyUsd(d.gains)} />
+                    </div>
+                    <span className="truncate text-[10px] text-muted-foreground">{d.label}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
         <Card className="rounded-md lg:col-span-2">
           <CardHeader>
-            <CardTitle className="text-base">Commandes par commune</CardTitle>
+            <CardTitle className="text-base">Encaissé aujourd'hui</CardTitle>
           </CardHeader>
-          <CardContent className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={byCommune}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="name" fontSize={11} interval={0} angle={-25} textAnchor="end" height={50} />
-                <YAxis allowDecimals={false} fontSize={11} width={28} />
-                <Tooltip />
-                <Bar dataKey="count" name="Commandes" fill="var(--primary)" radius={[2, 2, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+          <CardContent className="space-y-3 text-sm">
+            <div className="flex justify-between">
+              <span>Reçu en USD</span>
+              <span className="num font-semibold">{moneyUsd(recUsdToday)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Reçu en CDF</span>
+              <span className="num font-semibold">{moneyCdf(recCdfToday)}</span>
+            </div>
+            <div className="flex justify-between border-t pt-2 text-muted-foreground">
+              <span>Frais livraison (CDF, hors CA)</span>
+              <span className="num">{moneyCdf(feesCdfToday)}</span>
+            </div>
+            <p className="text-xs text-muted-foreground">Taux : 1 USD = {num(rate)} CDF</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="mt-6 grid gap-4 lg:grid-cols-2">
+        <Card className="rounded-md">
+          <CardHeader>
+            <CardTitle className="text-base">Dépenses</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="mb-2 grid grid-cols-[1fr_auto_auto] gap-2 text-[11px] uppercase tracking-wide text-muted-foreground">
+              <span>Poste</span>
+              <span>Aujourd'hui</span>
+              <span>7 jours</span>
+            </div>
+            <div className="space-y-2">
+              {spendRows.map(([, label, todayAmt, weekAmt]) => (
+                <div key={label} className="grid grid-cols-[1fr_auto_auto] items-center gap-2 text-sm">
+                  <span className="truncate">{label}</span>
+                  <span className="num text-right">{moneyUsd(todayAmt)}</span>
+                  <span className="num w-24 text-right font-medium">{moneyUsd(weekAmt)}</span>
+                </div>
+              ))}
+            </div>
+            {spentWeek === 0 && (
+              <p className="mt-3 text-sm text-muted-foreground">Pas encore de dépenses enregistrées.</p>
+            )}
           </CardContent>
         </Card>
         <Card className="rounded-md">
           <CardHeader>
-            <CardTitle className="text-base">Alertes stock</CardTitle>
+            <CardTitle className="text-base">À surveiller</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2">
-            {low.slice(0, 7).map((p) => (
-              <div key={p.id} className="flex justify-between text-sm">
+          <CardContent className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span>Commandes en cours</span>
+              <span className="font-semibold">{pending.length}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Stock bas</span>
+              <span className={low.length ? "font-semibold text-primary" : ""}>{low.length}</span>
+            </div>
+            {low.slice(0, 6).map((p) => (
+              <div key={p.id} className="flex justify-between text-muted-foreground">
                 <span className="truncate pr-2">{p.name}</span>
-                <span className="num font-semibold text-primary">{productStock(p)}</span>
+                <span>{productStock(p)}</span>
               </div>
             ))}
-            {low.length === 0 && <p className="text-sm text-muted-foreground">Aucune alerte.</p>}
+            {low.length === 0 && <p className="text-muted-foreground">Stock OK.</p>}
           </CardContent>
         </Card>
       </div>
-
-      <Card className="mt-4 rounded-md">
-        <CardHeader className="flex-row items-center justify-between">
-          <CardTitle className="text-base">Dernières commandes</CardTitle>
-          <Link to="/commandes" className="text-sm text-primary">Tout voir</Link>
-        </CardHeader>
-        <CardContent className="divide-y p-0">
-          {orders.slice(0, 6).map((o) => (
-            <div key={o.id} className="flex flex-wrap items-center justify-between gap-2 px-6 py-3 text-sm">
-              <div>
-                <div className="font-medium">{o.customerName}</div>
-                <div className="text-xs text-muted-foreground">
-                  {o.reference} · {communeName(o.communeId)} · {dateTime(o.createdAt)}
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="num font-semibold">{money(o.totalToCollect)}</span>
-                <OrderStatusBadge status={o.status} />
-              </div>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
     </div>
   );
 }
