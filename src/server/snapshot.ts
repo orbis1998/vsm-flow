@@ -31,38 +31,62 @@ import {
 } from "./map";
 import type { Permission, ProductVariant } from "@/types";
 
+function rows(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? (value as Record<string, unknown>[]) : [];
+}
+
 export async function loadAppState(): Promise<AppState> {
   return withClient(async (client) => {
-    const q = async (text: string) => (await client.query(text)).rows;
+    const result = await client.query<{ snap: Record<string, unknown> }>(`
+      select jsonb_build_object(
+        'company', (select to_jsonb(t) from company_settings t where id = 'company' limit 1),
+        'postes', (select coalesce(jsonb_agg(t), '[]'::jsonb) from (select * from postes order by name) t),
+        'users', (select coalesce(jsonb_agg(t), '[]'::jsonb) from (select * from users order by created_at) t),
+        'perms', (select coalesce(jsonb_agg(t), '[]'::jsonb) from user_permissions t),
+        'drivers', (select coalesce(jsonb_agg(t), '[]'::jsonb) from (select * from delivery_drivers order by full_name) t),
+        'driverZones', (select coalesce(jsonb_agg(t), '[]'::jsonb) from delivery_driver_zones t),
+        'categories', (select coalesce(jsonb_agg(t), '[]'::jsonb) from (select * from categories order by name) t),
+        'brands', (select coalesce(jsonb_agg(t), '[]'::jsonb) from (select * from brands order by name) t),
+        'suppliers', (select coalesce(jsonb_agg(t), '[]'::jsonb) from (select * from suppliers order by name) t),
+        'products', (select coalesce(jsonb_agg(t), '[]'::jsonb) from (select * from products order by created_at desc) t),
+        'variants', (select coalesce(jsonb_agg(t), '[]'::jsonb) from (select * from product_variants order by sku) t),
+        'customers', (select coalesce(jsonb_agg(t), '[]'::jsonb) from (select * from customers order by created_at desc) t),
+        'orders', (select coalesce(jsonb_agg(t), '[]'::jsonb) from (select * from orders order by created_at desc limit 400) t),
+        'orderItems', (
+          select coalesce(jsonb_agg(i), '[]'::jsonb) from order_items i
+          where i.order_id in (select id from orders order by created_at desc limit 400)
+        ),
+        'orderEvents', (
+          select coalesce(jsonb_agg(e), '[]'::jsonb) from order_events e
+          where e.order_id in (select id from orders order by created_at desc limit 400)
+        ),
+        'deliveries', (select coalesce(jsonb_agg(t), '[]'::jsonb) from (select * from deliveries order by created_at desc limit 200) t),
+        'sales', (select coalesce(jsonb_agg(t), '[]'::jsonb) from (select * from sales order by created_at desc limit 300) t),
+        'saleItems', (
+          select coalesce(jsonb_agg(i), '[]'::jsonb) from sale_items i
+          where i.sale_id in (select id from sales order by created_at desc limit 300)
+        ),
+        'movements', (select coalesce(jsonb_agg(t), '[]'::jsonb) from (select * from stock_movements order by created_at desc limit 200) t),
+        'purchaseOrders', (select coalesce(jsonb_agg(t), '[]'::jsonb) from (select * from purchase_orders order by created_at desc limit 100) t),
+        'poItems', (select coalesce(jsonb_agg(t), '[]'::jsonb) from purchase_items t),
+        'expenses', (select coalesce(jsonb_agg(t), '[]'::jsonb) from (select * from expenses order by created_at desc limit 200) t),
+        'transactions', (select coalesce(jsonb_agg(t), '[]'::jsonb) from (select * from financial_transactions order by created_at desc limit 200) t),
+        'cashSessions', (select coalesce(jsonb_agg(t), '[]'::jsonb) from (select * from cash_sessions order by opened_at desc limit 50) t),
+        'notifications', (select coalesce(jsonb_agg(t), '[]'::jsonb) from (select * from notifications order by created_at desc limit 80) t),
+        'auditLogs', (select coalesce(jsonb_agg(t), '[]'::jsonb) from (select * from audit_logs order by created_at desc limit 80) t),
+        'communes', (select coalesce(jsonb_agg(t), '[]'::jsonb) from (select * from communes order by name) t),
+        'zones', (select coalesce(jsonb_agg(t), '[]'::jsonb) from (select * from delivery_zones order by commune_id, name) t)
+      ) as snap
+    `);
 
-    const companyRows = await q("select * from company_settings where id = 'company' limit 1");
-    const postes = await q("select * from postes order by name");
-    const users = await q("select * from users order by created_at");
-    const perms = await q("select user_id, permission from user_permissions");
-    const drivers = await q("select * from delivery_drivers order by full_name");
-    const driverZones = await q("select driver_id, zone_id from delivery_driver_zones");
-    const categories = await q("select * from categories order by name");
-    const brands = await q("select * from brands order by name");
-    const suppliers = await q("select * from suppliers order by name");
-    const products = await q("select * from products order by created_at desc");
-    const variants = await q("select * from product_variants order by sku");
-    const customers = await q("select * from customers order by created_at desc");
-    const orders = await q("select * from orders order by created_at desc");
-    const orderItems = await q("select * from order_items");
-    const orderEvents = await q("select * from order_events order by created_at");
-    const deliveries = await q("select * from deliveries order by created_at desc");
-    const sales = await q("select * from sales order by created_at desc");
-    const saleItems = await q("select * from sale_items");
-    const movements = await q("select * from stock_movements order by created_at desc");
-    const purchaseOrders = await q("select * from purchase_orders order by created_at desc");
-    const poItems = await q("select * from purchase_items");
-    const expenses = await q("select * from expenses order by created_at desc");
-    const transactions = await q("select * from financial_transactions order by created_at desc");
-    const cashSessions = await q("select * from cash_sessions order by opened_at desc");
-    const notifications = await q("select * from notifications order by created_at desc");
-    const auditLogs = await q("select * from audit_logs order by created_at desc");
-    const communes = await q("select * from communes order by name");
-    const zones = await q("select * from delivery_zones order by commune_id, name");
+    const snap = result.rows[0]?.snap ?? {};
+    const perms = rows(snap.perms);
+    const driverZones = rows(snap.driverZones);
+    const variants = rows(snap.variants);
+    const orderItems = rows(snap.orderItems);
+    const orderEvents = rows(snap.orderEvents);
+    const saleItems = rows(snap.saleItems);
+    const poItems = rows(snap.poItems);
 
     const extraByUser = new Map<string, Permission[]>();
     for (const row of perms) {
@@ -85,40 +109,41 @@ export async function loadAppState(): Promise<AppState> {
     const eventsByOrder = groupBy(orderEvents, "order_id");
     const itemsBySale = groupBy(saleItems, "sale_id");
     const itemsByPo = groupBy(poItems, "purchase_order_id");
+    const companyRow = snap.company as Record<string, unknown> | null;
 
     return {
-      company: companyRows[0] ? mapCompany(companyRows[0]) : EMPTY_APP_STATE.company,
-      postes: postes.map(mapPoste),
-      users: users.map((row) => mapUser(row, extraByUser.get(String(row.id)) ?? [])),
-      drivers: drivers.map((row) => mapDriver(row, zonesByDriver.get(String(row.id)) ?? [])),
-      categories: categories.map(mapCategory),
-      brands: brands.map(mapBrand),
-      suppliers: suppliers.map(mapSupplier),
-      products: products.map((row) => {
+      company: companyRow ? mapCompany(companyRow) : EMPTY_APP_STATE.company,
+      postes: rows(snap.postes).map(mapPoste),
+      users: rows(snap.users).map((row) => mapUser(row, extraByUser.get(String(row.id)) ?? [])),
+      drivers: rows(snap.drivers).map((row) => mapDriver(row, zonesByDriver.get(String(row.id)) ?? [])),
+      categories: rows(snap.categories).map(mapCategory),
+      brands: rows(snap.brands).map(mapBrand),
+      suppliers: rows(snap.suppliers).map(mapSupplier),
+      products: rows(snap.products).map((row) => {
         const list: ProductVariant[] = (variantsByProduct.get(String(row.id)) ?? []).map(mapVariant);
         return mapProduct(row, list);
       }),
-      customers: customers.map(mapCustomer),
-      orders: orders.map((row) =>
+      customers: rows(snap.customers).map(mapCustomer),
+      orders: rows(snap.orders).map((row) =>
         mapOrder(
           row,
           (itemsByOrder.get(String(row.id)) ?? []).map(mapOrderItem),
           (eventsByOrder.get(String(row.id)) ?? []).map(mapOrderEvent),
         ),
       ),
-      deliveries: deliveries.map(mapDelivery),
-      sales: sales.map((row) => mapSale(row, (itemsBySale.get(String(row.id)) ?? []).map(mapSaleItem))),
-      movements: movements.map(mapMovement),
-      purchaseOrders: purchaseOrders.map((row) =>
+      deliveries: rows(snap.deliveries).map(mapDelivery),
+      sales: rows(snap.sales).map((row) => mapSale(row, (itemsBySale.get(String(row.id)) ?? []).map(mapSaleItem))),
+      movements: rows(snap.movements).map(mapMovement),
+      purchaseOrders: rows(snap.purchaseOrders).map((row) =>
         mapPurchaseOrder(row, (itemsByPo.get(String(row.id)) ?? []).map(mapPurchaseItem)),
       ),
-      expenses: expenses.map(mapExpense),
-      transactions: transactions.map(mapTransaction),
-      cashSessions: cashSessions.map(mapCashSession),
-      notifications: notifications.map(mapNotification),
-      auditLogs: auditLogs.map(mapAudit),
-      communes: communes.map(mapCommune),
-      zones: zones.map(mapZone),
+      expenses: rows(snap.expenses).map(mapExpense),
+      transactions: rows(snap.transactions).map(mapTransaction),
+      cashSessions: rows(snap.cashSessions).map(mapCashSession),
+      notifications: rows(snap.notifications).map(mapNotification),
+      auditLogs: rows(snap.auditLogs).map(mapAudit),
+      communes: rows(snap.communes).map(mapCommune),
+      zones: rows(snap.zones).map(mapZone),
     };
   });
 }

@@ -105,9 +105,9 @@ export async function createProduct(client: Client, input: ProductCreateInput): 
   await client.query(
     `insert into products (
       id, name, sku, barcode, custom_barcode, category_id, brand_id, supplier_id,
-      purchase_price, sale_price, promo_price, min_stock, unit, description, image_label,
+      purchase_price, sale_price, promo_price, min_stock, unit, description, image_label, image_url,
       lot_number, expiry_date, options, created_at
-    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18::jsonb,$19)`,
+    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19::jsonb,$20)`,
     [
       id,
       input.name,
@@ -124,6 +124,7 @@ export async function createProduct(client: Client, input: ProductCreateInput): 
       input.unit,
       input.description,
       input.imageLabel,
+      input.imageUrl ?? "",
       input.lotNumber ?? null,
       input.expiryDate ?? null,
       JSON.stringify(input.options ?? []),
@@ -161,7 +162,7 @@ export async function updateProduct(client: Client, id: ID, patch: Partial<Produ
     `update products set
       name = $2, sku = $3, barcode = $4, custom_barcode = $5, category_id = $6, brand_id = $7,
       supplier_id = $8, purchase_price = $9, sale_price = $10, promo_price = $11, min_stock = $12,
-      unit = $13, description = $14, image_label = $15, lot_number = $16, expiry_date = $17
+      unit = $13, description = $14, image_label = $15, image_url = $16, lot_number = $17, expiry_date = $18
      where id = $1`,
     [
       id,
@@ -179,17 +180,31 @@ export async function updateProduct(client: Client, id: ID, patch: Partial<Produ
       patch.unit ?? row.unit,
       patch.description ?? row.description,
       patch.imageLabel ?? row.image_label,
+      patch.imageUrl !== undefined ? (patch.imageUrl ?? "") : (row.image_url ?? ""),
       patch.lotNumber !== undefined ? (patch.lotNumber ?? null) : row.lot_number,
       patch.expiryDate !== undefined ? (patch.expiryDate ?? null) : row.expiry_date,
     ],
   );
   if (patch.variants) {
     await client.query("delete from product_variants where product_id = $1", [id]);
-    for (const v of patch.variants) {
+    for (const [i, v] of patch.variants.entries()) {
+      const vid = v.id || `${id}-v${i + 1}`;
       await client.query(
-        `insert into product_variants (id, product_id, sku, barcode, size, color, model, stock, reserved, sold)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-        [v.id, id, v.sku, v.barcode, v.size ?? null, v.color ?? null, v.model ?? null, v.stock, v.reserved, v.sold],
+        `insert into product_variants (id, product_id, sku, barcode, size, color, model, stock, reserved, sold, options)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)`,
+        [
+          vid,
+          id,
+          v.sku,
+          v.barcode,
+          v.size ?? v.options?.Taille ?? null,
+          v.color ?? v.options?.Couleur ?? null,
+          v.model ?? v.options?.["Modèle"] ?? null,
+          v.stock,
+          v.reserved,
+          v.sold,
+          JSON.stringify(v.options ?? {}),
+        ],
       );
     }
   }
@@ -197,6 +212,12 @@ export async function updateProduct(client: Client, id: ID, patch: Partial<Produ
 }
 
 export async function removeProduct(client: Client, id: ID): Promise<void> {
+  const used = await client.query("select count(*)::int as n from order_items where product_id = $1", [id]);
+  if (Number(used.rows[0]?.n ?? 0) > 0) {
+    throw new Error("Impossible de supprimer : l'article est déjà dans des commandes. Vous pouvez le modifier.");
+  }
+  await client.query("delete from stock_movements where product_id = $1", [id]);
+  await client.query("delete from product_variants where product_id = $1", [id]);
   await client.query("delete from products where id = $1", [id]);
   await audit(client, "Suppression produit", "Product", id);
 }
@@ -235,7 +256,7 @@ export async function addMovement(
 /* -------------------------------- Commandes -------------------------------- */
 
 export type OrderCreateInput = {
-  customerId: ID;
+  customerId?: ID;
   customerName: string;
   phone: string;
   communeId: ID;
@@ -249,6 +270,15 @@ export type OrderCreateInput = {
 
 export async function createOrder(client: Client, input: OrderCreateInput): Promise<Order> {
   const who = await actor(client);
+  if (!input.items.length) throw new Error("Ajoutez au moins un article.");
+  for (const it of input.items) {
+    if (!it.variantId) throw new Error(`Stock indisponible pour ${it.productName}`);
+    const stock = await client.query("select stock from product_variants where id = $1", [it.variantId]);
+    const available = Number(stock.rows[0]?.stock ?? 0);
+    if (available < it.quantity) {
+      throw new Error(`${it.productName} : stock insuffisant (${available} restant).`);
+    }
+  }
   const count = await client.query("select count(*)::int as n from orders");
   const n = Number(count.rows[0]?.n ?? 0);
   const id = nextId("ord");
@@ -258,6 +288,7 @@ export async function createOrder(client: Client, input: OrderCreateInput): Prom
   const totalToCollect = productsTotal;
   const reference = `CMD-${new Date().getFullYear()}-${1000 + n + 1}`;
   const evtId = nextId("evt");
+  const customerName = input.customerName.trim() || "Client";
 
   await client.query(
     `insert into orders (
@@ -267,8 +298,8 @@ export async function createOrder(client: Client, input: OrderCreateInput): Prom
     [
       id,
       reference,
-      input.customerId,
-      input.customerName,
+      input.customerId || null,
+      customerName,
       input.phone,
       input.communeId,
       input.zoneId,
@@ -297,8 +328,7 @@ export async function createOrder(client: Client, input: OrderCreateInput): Prom
   return {
     id,
     reference,
-    customerId: input.customerId,
-    customerName: input.customerName,
+    customerName,
     phone: input.phone,
     communeId: input.communeId,
     zoneId: input.zoneId,
@@ -315,6 +345,7 @@ export async function createOrder(client: Client, input: OrderCreateInput): Prom
     receivedCdf: 0,
     createdAt,
     history: [{ id: evtId, status: "nouvelle", note: "Commande enregistrée", userName: who.fullName, createdAt }],
+    ...(input.customerId ? { customerId: input.customerId } : {}),
   };
 }
 

@@ -20,7 +20,7 @@ export type ProductCreateInput = Omit<Product, "id" | "createdAt" | "variants"> 
 };
 
 export type OrderCreateInput = {
-  customerId: ID;
+  customerId?: ID;
   customerName: string;
   phone: string;
   communeId: ID;

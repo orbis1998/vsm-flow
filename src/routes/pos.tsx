@@ -3,6 +3,8 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Minus, Plus, ScanLine, Trash2 } from "lucide-react";
 import { useAppState } from "@/lib/app-store";
+import { productImage } from "@/lib/catalog";
+import { AmountInput, toNumber } from "@/lib/amount";
 import { moneyCdf, moneyUsd } from "@/lib/format";
 import { APP_NAME } from "@/lib/brand";
 import { variantLabel } from "@/lib/variants";
@@ -35,10 +37,10 @@ function PosPage() {
   const postes = useAppState((s) => s.postes);
   const [q, setQ] = useState("");
   const [cart, setCart] = useState<Line[]>([]);
-  const [discount, setDiscount] = useState(0);
+  const [discount, setDiscount] = useState("");
   const company = useAppState((s) => s.company);
-  const [receivedUsd, setReceivedUsd] = useState(0);
-  const [receivedCdf, setReceivedCdf] = useState(0);
+  const [receivedUsd, setReceivedUsd] = useState("");
+  const [receivedCdf, setReceivedCdf] = useState("");
   const [customer, setCustomer] = useState("Client comptoir");
   const [pick, setPick] = useState<Product | null>(null);
   if (!can("pos.use")) return <Forbidden />;
@@ -71,23 +73,23 @@ function PosPage() {
     if (p) { add(p); setQ(""); } else toast.error("Code introuvable");
   };
 
-  const total = Math.max(0, subtotal - discount);
+  const total = Math.max(0, subtotal - toNumber(discount));
   const checkout = async () => {
     if (!cart.length) return;
     if (!posteId) { toast.error("Choisissez un poste de vente"); return; }
     const sale = await salesService.create({
       posteId,
       customerName: customer,
-      discount,
-      receivedUsd,
-      receivedCdf,
+      discount: toNumber(discount),
+      receivedUsd: toNumber(receivedUsd),
+      receivedCdf: toNumber(receivedCdf),
       items: cart.map((l) => ({ productId: l.product.id, variantId: l.variantId, productName: l.product.name, quantity: l.qty, unitPrice: price(l.product), discount: 0 })),
     });
     toast.success(`Vente ${sale.reference}`);
     setCart([]);
-    setDiscount(0);
-    setReceivedUsd(0);
-    setReceivedCdf(0);
+    setDiscount("");
+    setReceivedUsd("");
+    setReceivedCdf("");
   };
 
   return (
@@ -102,9 +104,14 @@ function PosPage() {
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
             {list.map((p) => {
               const st = p.variants.reduce((s, v) => s + v.stock, 0);
+              const img = productImage(p);
               return (
                 <button key={p.id} onClick={() => add(p)} disabled={st === 0} className="rounded-md border bg-card p-3 text-left transition hover:border-primary disabled:opacity-40">
-                  <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-sm bg-foreground text-xs font-bold text-background">{p.imageLabel}</div>
+                  {img ? (
+                    <img src={img} alt="" className="mb-2 h-16 w-full rounded-sm object-cover" />
+                  ) : (
+                    <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-sm bg-foreground text-xs font-bold text-background">{p.imageLabel.slice(0, 2) || p.name.slice(0, 2).toUpperCase()}</div>
+                  )}
                   <div className="line-clamp-2 text-sm font-medium">{p.name}</div>
                   <div className="mt-1 flex justify-between text-xs"><span className="num font-bold text-primary">{moneyUsd(price(p))}</span><span className="text-muted-foreground">{st} en stock</span></div>
                 </button>
@@ -128,17 +135,17 @@ function PosPage() {
             ))}
             <div className="space-y-1 border-t pt-3 text-sm">
               <div className="flex justify-between"><span>Sous-total</span><span className="num">{moneyUsd(subtotal)}</span></div>
-              <div className="flex items-center justify-between"><span>Remise</span><Input type="number" className="h-8 w-24 text-right" value={discount} onChange={(e) => setDiscount(Math.max(0, +e.target.value))} /></div>
+              <div className="flex items-center justify-between"><span>Remise</span><AmountInput className="h-8 w-24 text-right" value={discount} onValueChange={setDiscount} placeholder="—" /></div>
               <div className="flex justify-between text-lg font-bold"><span>Total USD</span><span className="num">{moneyUsd(total)}</span></div>
               <p className="text-xs text-muted-foreground">≈ {moneyCdf(total * (company.usdCdfRate || 2800))}</p>
               <div className="grid grid-cols-2 gap-2 pt-1">
                 <div>
                   <div className="text-xs text-muted-foreground">Reçu USD</div>
-                  <Input type="number" className="h-9" value={receivedUsd} onChange={(e) => setReceivedUsd(+e.target.value)} />
+                  <AmountInput className="h-9" value={receivedUsd} onValueChange={setReceivedUsd} placeholder="—" />
                 </div>
                 <div>
                   <div className="text-xs text-muted-foreground">Reçu CDF</div>
-                  <Input type="number" className="h-9" value={receivedCdf} onChange={(e) => setReceivedCdf(+e.target.value)} />
+                  <AmountInput className="h-9" value={receivedCdf} onValueChange={setReceivedCdf} placeholder="—" />
                 </div>
               </div>
             </div>

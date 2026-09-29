@@ -135,6 +135,7 @@ export interface Product {
   unit: Unit;
   description: string;
   imageLabel: string;
+  imageUrl?: string | undefined;
   lotNumber?: string | undefined;
   expiryDate?: ISODate | undefined;
   options: ProductOption[];
@@ -277,7 +278,7 @@ export type PaymentState = "non_paye" | "paye" | "partiel";
 export interface Order {
   id: ID;
   reference: string;
-  customerId: ID;
+  customerId?: ID | undefined;
   customerName: string;
   phone: string;
   communeId: ID;

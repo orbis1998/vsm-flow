@@ -74,7 +74,7 @@ export const ordersService = {
     return (await getAppStateFn()).orders.find((o) => o.id === id) ?? null;
   },
   async create(input: {
-    customerId: ID;
+    customerId?: ID;
     customerName: string;
     phone: string;
     communeId: ID;

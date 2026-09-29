@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Plus, Trash2 } from "lucide-react";
 import { useAppState } from "@/lib/app-store";
 import { communeName, zoneName } from "@/lib/geo";
+import { pickAvailableVariant, productInStock, productStock } from "@/lib/catalog";
 import { dateTime, moneyCdf, moneyUsd, ORDER_STATUS_LABEL, ORDER_STATUS_ORDER } from "@/lib/format";
 import { APP_NAME } from "@/lib/brand";
 import { variantLabel } from "@/lib/variants";
@@ -18,6 +19,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Empty, Forbidden, OrderStatusBadge, PageHeader } from "@/components/common/ui-bits";
+import { AmountInput, toNumber } from "@/lib/amount";
 import type { Order, OrderItem, OrderStatus } from "@/types";
 
 export const Route = createFileRoute("/commandes")({
@@ -97,7 +99,7 @@ function OrdersPage() {
                 <TableRow key={o.id} className="cursor-pointer" onClick={() => setSelected(o.id)}>
                   <TableCell className="font-mono text-xs">{o.reference}</TableCell>
                   <TableCell>
-                    <div className="font-medium">{o.customerName}</div>
+                    <div className="font-medium">{o.customerName || "Client"}</div>
                     <div className="text-xs text-muted-foreground">{o.phone}</div>
                   </TableCell>
                   <TableCell className="hidden md:table-cell">{communeName(o.communeId)}</TableCell>
@@ -120,13 +122,13 @@ function OrderSheet({ order, onClose }: { order: Order | null; onClose: () => vo
   const { can } = useSession();
   const drivers = useAppState((s) => s.drivers.filter((d) => d.active));
   const products = useAppState((s) => s.products);
-  const [receivedUsd, setReceivedUsd] = useState(0);
-  const [receivedCdf, setReceivedCdf] = useState(0);
+  const [receivedUsd, setReceivedUsd] = useState("");
+  const [receivedCdf, setReceivedCdf] = useState("");
   const [draft, setDraft] = useState<OrderItem[]>([]);
 
   useEffect(() => {
-    setReceivedUsd(order?.receivedUsd ?? 0);
-    setReceivedCdf(order?.receivedCdf ?? 0);
+    setReceivedUsd(order?.receivedUsd ? String(order.receivedUsd) : "");
+    setReceivedCdf(order?.receivedCdf ? String(order.receivedCdf) : "");
     setDraft(order?.items ?? []);
   }, [order?.id, order?.receivedUsd, order?.receivedCdf, order?.items]);
 
@@ -142,7 +144,7 @@ function OrderSheet({ order, onClose }: { order: Order | null; onClose: () => vo
             </SheetHeader>
             <div className="mt-4 space-y-4 text-sm">
               <div>
-                <div className="font-semibold">{order.customerName}</div>
+                <div className="font-semibold">{order.customerName || "Client"}</div>
                 <div>{order.phone}</div>
                 <div className="text-muted-foreground">
                   {communeName(order.communeId)}, {zoneName(order.zoneId)} — {order.addressDetail}
@@ -223,17 +225,17 @@ function OrderSheet({ order, onClose }: { order: Order | null; onClose: () => vo
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <Label>Reçu USD</Label>
-                    <Input type="number" value={receivedUsd} onChange={(e) => setReceivedUsd(+e.target.value)} />
+                    <AmountInput value={receivedUsd} onValueChange={setReceivedUsd} placeholder="—" />
                   </div>
                   <div>
                     <Label>Reçu CDF</Label>
-                    <Input type="number" value={receivedCdf} onChange={(e) => setReceivedCdf(+e.target.value)} />
+                    <AmountInput value={receivedCdf} onValueChange={setReceivedCdf} placeholder="—" />
                   </div>
                   <Button
                     className="col-span-2"
                     variant="outline"
                     onClick={async () => {
-                      await ordersService.collectPayment(order.id, receivedUsd, receivedCdf);
+                      await ordersService.collectPayment(order.id, toNumber(receivedUsd), toNumber(receivedCdf));
                       toast.success("Encaissement enregistré");
                     }}
                   >
@@ -318,6 +320,8 @@ function NewOrderDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
   const zones = useAppState((s) => s.zones);
   const zonesOf = (cid: string) => zones.filter((z) => z.communeId === cid);
   const [customerId, setCustomerId] = useState("");
+  const [customerName, setCustomerName] = useState("");
+  const [phone, setPhone] = useState("");
   const [communeId, setCommuneId] = useState(communes[0]?.id ?? "");
   const [zoneId, setZoneId] = useState(zonesOf(communes[0]?.id ?? "")[0]?.id ?? "");
   const [address, setAddress] = useState("");
@@ -326,33 +330,69 @@ function NewOrderDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
   const [lines, setLines] = useState<Array<{ productId: string; qty: number }>>([]);
   const [productId, setProductId] = useState("");
 
+  const available = products.filter(productInStock);
   const fee = zones.find((z) => z.id === zoneId)?.defaultFee ?? 0;
   const total = lines.reduce((s, l) => {
     const p = products.find((x) => x.id === l.productId);
     return s + (p ? (p.promoPrice ?? p.salePrice) * l.qty : 0);
   }, 0);
 
+  const addLine = () => {
+    if (!productId) return;
+    const p = products.find((x) => x.id === productId);
+    if (!p || !productInStock(p)) {
+      toast.error("Article en rupture de stock");
+      return;
+    }
+    setLines((l) => [...l, { productId, qty: 1 }]);
+    setProductId("");
+  };
+
   const submit = async () => {
-    const c = customers.find((x) => x.id === customerId);
-    if (!c || lines.length === 0) { toast.error("Choisissez un client et au moins un produit"); return; }
-    await ordersService.create({
-      customerId: c.id,
-      customerName: c.fullName,
-      phone: c.phone,
-      communeId,
-      zoneId,
-      addressDetail: address || c.address,
-      landmark,
-      notes,
-      deliveryFee: fee,
-      items: lines.map((l) => {
-        const p = products.find((x) => x.id === l.productId)!;
-        return { productId: p.id, variantId: p.variants[0]?.id, productName: p.name, quantity: l.qty, unitPrice: p.promoPrice ?? p.salePrice, discount: 0 };
-      }),
-    });
-    toast.success("Commande créée");
-    setLines([]);
-    onOpenChange(false);
+    if (lines.length === 0) {
+      toast.error("Ajoutez au moins un produit en stock");
+      return;
+    }
+    const items = [];
+    for (const l of lines) {
+      const p = products.find((x) => x.id === l.productId);
+      if (!p) continue;
+      const variant = pickAvailableVariant(p, l.qty);
+      if (!variant) {
+        toast.error(`${p.name} n'a plus de stock`);
+        return;
+      }
+      items.push({
+        productId: p.id,
+        variantId: variant.id,
+        productName: p.name,
+        quantity: l.qty,
+        unitPrice: p.promoPrice ?? p.salePrice,
+        discount: 0,
+      });
+    }
+    try {
+      await ordersService.create({
+        ...(customerId ? { customerId } : {}),
+        customerName: customerName.trim(),
+        phone,
+        communeId,
+        zoneId,
+        addressDetail: address,
+        landmark,
+        notes,
+        deliveryFee: fee,
+        items,
+      });
+      toast.success("Commande créée");
+      setLines([]);
+      setCustomerId("");
+      setCustomerName("");
+      setPhone("");
+      onOpenChange(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Enregistrement impossible");
+    }
   };
 
   return (
@@ -361,22 +401,43 @@ function NewOrderDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
         <DialogHeader><DialogTitle>Nouvelle commande</DialogTitle></DialogHeader>
         <div className="grid gap-3">
           <div>
-            <Label>Client</Label>
+            <Label>Client existant (facultatif)</Label>
             <Select
-              value={customerId}
+              value={customerId || "__none"}
               onValueChange={(v) => {
+                if (v === "__none") {
+                  setCustomerId("");
+                  return;
+                }
                 setCustomerId(v);
                 const c = customers.find((x) => x.id === v);
-                if (c) { setCommuneId(c.communeId); setZoneId(c.zoneId); setAddress(c.address); }
+                if (c) {
+                  setCustomerName(c.fullName);
+                  setPhone(c.phone);
+                  setCommuneId(c.communeId);
+                  setZoneId(c.zoneId);
+                  setAddress(c.address);
+                }
               }}
             >
-              <SelectTrigger><SelectValue placeholder="Choisir un client" /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder="Aucun" /></SelectTrigger>
               <SelectContent>
+                <SelectItem value="__none">Aucun — saisie libre</SelectItem>
                 {customers.map((c) => (
                   <SelectItem key={c.id} value={c.id}>{c.fullName} — {c.phone}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Nom du client (facultatif)</Label>
+              <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Laissé vide = Client" />
+            </div>
+            <div>
+              <Label>Téléphone</Label>
+              <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -397,13 +458,23 @@ function NewOrderDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
           <div><Label>Adresse</Label><Input value={address} onChange={(e) => setAddress(e.target.value)} /></div>
           <div><Label>Point de repère</Label><Input value={landmark} onChange={(e) => setLandmark(e.target.value)} /></div>
           <div>
-            <Label>Produits</Label>
+            <Label>Produits en stock</Label>
             <div className="flex gap-2">
               <Select value={productId} onValueChange={setProductId}>
                 <SelectTrigger><SelectValue placeholder="Ajouter un produit" /></SelectTrigger>
-                <SelectContent>{products.map((p) => <SelectItem key={p.id} value={p.id}>{p.name} — {moneyUsd(p.promoPrice ?? p.salePrice)}</SelectItem>)}</SelectContent>
+                <SelectContent>
+                  {available.length === 0 ? (
+                    <SelectItem value="__empty" disabled>Aucun article en stock</SelectItem>
+                  ) : (
+                    available.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name} — {moneyUsd(p.promoPrice ?? p.salePrice)} · {productStock(p)}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
               </Select>
-              <Button type="button" variant="outline" onClick={() => productId && setLines((l) => [...l, { productId, qty: 1 }])}>Ajouter</Button>
+              <Button type="button" variant="outline" onClick={addLine}>Ajouter</Button>
             </div>
             <div className="mt-2 space-y-1">
               {lines.map((l, i) => (

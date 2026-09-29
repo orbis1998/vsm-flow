@@ -4,7 +4,10 @@ import { toast } from "sonner";
 import { Download } from "lucide-react";
 import { LogoMark } from "@/components/brand/LogoMark";
 import { loginFn } from "@/fn/auth";
+import { getAppStateFn } from "@/fn/app";
+import { APP_STATE_KEY } from "@/lib/app-state";
 import { saveSession } from "@/lib/session";
+import { useQueryClient } from "@tanstack/react-query";
 import { APP_NAME, APP_TAGLINE } from "@/lib/brand";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,19 +27,25 @@ type InstallPrompt = Event & { prompt: () => Promise<void> };
 
 function LoginPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [install, setInstall] = useState<InstallPrompt | null>(null);
 
   useEffect(() => {
+    void queryClient.prefetchQuery({
+      queryKey: APP_STATE_KEY,
+      queryFn: () => getAppStateFn(),
+      staleTime: 60_000,
+    });
     const onPrompt = (e: Event) => {
       e.preventDefault();
       setInstall(e as InstallPrompt);
     };
     window.addEventListener("beforeinstallprompt", onPrompt);
     return () => window.removeEventListener("beforeinstallprompt", onPrompt);
-  }, []);
+  }, [queryClient]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,8 +54,12 @@ function LoginPage() {
       const user = await loginFn({ data: { login, password } });
       saveSession(user.id);
       toast.success(`Bienvenue ${user.fullName}`);
+      await queryClient.ensureQueryData({
+        queryKey: APP_STATE_KEY,
+        queryFn: () => getAppStateFn(),
+        staleTime: 60_000,
+      });
       await navigate({ to: "/" });
-      window.location.assign("/");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Connexion impossible");
     } finally {

@@ -7,9 +7,9 @@ export function useAppQuery() {
   return useQuery({
     queryKey: APP_STATE_KEY,
     queryFn: () => getAppStateFn(),
-    staleTime: 12_000,
-    refetchInterval: 25_000,
-    retry: 3,
+    staleTime: 60_000,
+    refetchInterval: 90_000,
+    retry: 2,
   });
 }
 

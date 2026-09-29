@@ -173,6 +173,8 @@ export function mapProduct(row: Record<string, unknown>, variants: ProductVarian
     variants,
     createdAt: iso(row.created_at),
   };
+  const imageUrl = optStr(row.image_url) || (String(row.image_label ?? "").startsWith("data:") ? String(row.image_label) : "");
+  if (imageUrl) p.imageUrl = imageUrl;
   const customBarcode = optStr(row.custom_barcode);
   const promoPrice = optNum(row.promo_price);
   const lotNumber = optStr(row.lot_number);
@@ -232,8 +234,7 @@ export function mapOrder(
   const order: Order = {
     id: String(row.id),
     reference: String(row.reference),
-    customerId: String(row.customer_id),
-    customerName: String(row.customer_name),
+    customerName: String(row.customer_name || "Client"),
     phone: String(row.phone),
     communeId: String(row.commune_id),
     zoneId: String(row.zone_id),
@@ -253,6 +254,8 @@ export function mapOrder(
   };
   const driverId = optStr(row.driver_id);
   if (driverId) order.driverId = driverId;
+  const customerId = optStr(row.customer_id);
+  if (customerId) order.customerId = customerId;
   return order;
 }
 

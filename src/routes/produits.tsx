@@ -1,11 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useAppState } from "@/lib/app-store";
-import { productStock } from "@/lib/catalog";
+import { productImage, productStock } from "@/lib/catalog";
 import { moneyUsd } from "@/lib/format";
 import { APP_NAME } from "@/lib/brand";
+import { fileToJpegDataUrl } from "@/lib/image";
+import { AmountInput, toNumber } from "@/lib/amount";
 import { cartesianOptions, OPTION_PRESETS, parseValues, variantLabel } from "@/lib/variants";
 import { productsService } from "@/services";
 import { useSession } from "@/hooks/useSession";
@@ -16,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Forbidden, PageHeader } from "@/components/common/ui-bits";
-import type { ProductOption, Unit } from "@/types";
+import type { Product, ProductOption, Unit } from "@/types";
 
 export const Route = createFileRoute("/produits")({
   head: () => ({
@@ -33,14 +35,16 @@ function ProductsPage() {
   const suppliers = useAppState((s) => s.suppliers);
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<Product | null>(null);
   const [name, setName] = useState("");
   const [unit, setUnit] = useState<Unit>("pièce");
-  const [purchase, setPurchase] = useState(0);
-  const [sale, setSale] = useState(0);
-  const [minStock, setMinStock] = useState(5);
+  const [purchase, setPurchase] = useState("");
+  const [sale, setSale] = useState("");
+  const [minStock, setMinStock] = useState("");
   const [categoryId, setCategoryId] = useState(categories[0]?.id ?? "");
+  const [imageUrl, setImageUrl] = useState("");
   const [optionRows, setOptionRows] = useState<Array<{ name: string; raw: string }>>([]);
-  const [stocks, setStocks] = useState<Record<string, number>>({});
+  const [stocks, setStocks] = useState<Record<string, string>>({});
 
   const options: ProductOption[] = optionRows
     .map((r) => ({ name: r.name.trim(), values: parseValues(r.raw) }))
@@ -51,53 +55,99 @@ function ProductsPage() {
 
   const list = products.filter((p) => `${p.name} ${p.sku}`.toLowerCase().includes(q.toLowerCase()));
 
+  const reset = () => {
+    setEditing(null);
+    setName("");
+    setPurchase("");
+    setSale("");
+    setMinStock("");
+    setImageUrl("");
+    setOptionRows([]);
+    setStocks({});
+    setUnit("pièce");
+    setCategoryId(categories[0]?.id ?? "");
+  };
+
+  const openCreate = () => {
+    reset();
+    setOpen(true);
+  };
+
+  const openEdit = (p: Product) => {
+    setEditing(p);
+    setName(p.name);
+    setUnit(p.unit);
+    setPurchase(p.purchasePrice ? String(p.purchasePrice) : "");
+    setSale(p.salePrice ? String(p.salePrice) : "");
+    setMinStock(p.minStock ? String(p.minStock) : "");
+    setCategoryId(p.categoryId);
+    setImageUrl(productImage(p));
+    setOptionRows(p.options.map((o) => ({ name: o.name, raw: o.values.join(", ") })));
+    const next: Record<string, string> = {};
+    for (const v of p.variants) {
+      next[JSON.stringify(v.options)] = v.stock ? String(v.stock) : "";
+    }
+    setStocks(next);
+    setOpen(true);
+  };
+
   const save = async () => {
     if (!name) {
       toast.error("Nom requis");
       return;
     }
     const cat = categoryId || categories[0]?.id;
-    const brand = brands[0]?.id;
-    const supplier = suppliers[0]?.id;
+    const brand = editing?.brandId || brands[0]?.id;
+    const supplier = editing?.supplierId || suppliers[0]?.id;
     if (!cat || !brand || !supplier) {
       toast.error("Créez d'abord une catégorie dans le catalogue (données de base).");
       return;
     }
-    const sku = `ART-${Date.now().toString(36).toUpperCase()}`;
+    const sku = editing?.sku ?? `ART-${Date.now().toString(36).toUpperCase()}`;
     const variants = combos.map((opts, i) => {
       const key = JSON.stringify(opts);
+      const existing = editing?.variants.find((v) => JSON.stringify(v.options) === key);
       return {
-        id: "",
-        productId: "",
-        sku: `${sku}-${i + 1}`,
-        barcode: `${Date.now()}${i}`,
+        id: existing?.id ?? "",
+        productId: editing?.id ?? "",
+        sku: existing?.sku ?? `${sku}-${i + 1}`,
+        barcode: existing?.barcode ?? `${Date.now()}${i}`,
         options: opts,
-        stock: stocks[key] ?? 0,
-        reserved: 0,
-        sold: 0,
+        stock: toNumber(stocks[key] ?? ""),
+        reserved: existing?.reserved ?? 0,
+        sold: existing?.sold ?? 0,
       };
     });
-    await productsService.create({
+    const payload = {
       name,
       sku,
-      barcode: `${Date.now()}`,
+      barcode: editing?.barcode ?? `${Date.now()}`,
       categoryId: cat,
       brandId: brand,
       supplierId: supplier,
-      purchasePrice: purchase,
-      salePrice: sale,
-      minStock,
+      purchasePrice: toNumber(purchase),
+      salePrice: toNumber(sale),
+      minStock: toNumber(minStock),
       unit,
-      description: "",
+      description: editing?.description ?? "",
       imageLabel: name.slice(0, 2).toUpperCase(),
+      imageUrl,
       options,
       variants,
-    });
-    toast.success(`${variants.length} variante(s) créée(s)`);
-    setOpen(false);
-    setName("");
-    setOptionRows([]);
-    setStocks({});
+    };
+    try {
+      if (editing) {
+        await productsService.update(editing.id, payload);
+        toast.success("Article modifié");
+      } else {
+        await productsService.create(payload);
+        toast.success(`${Math.max(variants.length, 1)} variante(s) créée(s)`);
+      }
+      setOpen(false);
+      reset();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Enregistrement impossible");
+    }
   };
 
   return (
@@ -107,7 +157,7 @@ function ProductsPage() {
         subtitle={`${products.length} références`}
         actions={
           can("products.manage") && (
-            <Button onClick={() => setOpen(true)}>
+            <Button onClick={openCreate}>
               <Plus className="mr-1 h-4 w-4" /> Nouvel article
             </Button>
           )
@@ -121,26 +171,63 @@ function ProductsPage() {
               <TableHead>Article</TableHead>
               <TableHead className="text-right">Vente</TableHead>
               <TableHead className="text-right">Stock</TableHead>
+              {can("products.manage") && <TableHead className="w-24" />}
             </TableRow>
           </TableHeader>
           <TableBody>
-            {list.map((p) => (
-              <TableRow key={p.id}>
-                <TableCell>
-                  <div className="font-medium">{p.name}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {p.sku} · {p.variants.length} var.
-                  </div>
-                </TableCell>
-                <TableCell className="num text-right">{moneyUsd(p.promoPrice ?? p.salePrice)}</TableCell>
-                <TableCell className={`num text-right ${productStock(p) <= p.minStock ? "text-primary" : ""}`}>
-                  {productStock(p)}
-                </TableCell>
-              </TableRow>
-            ))}
+            {list.map((p) => {
+              const img = productImage(p);
+              return (
+                <TableRow key={p.id}>
+                  <TableCell>
+                    <div className="flex items-center gap-3">
+                      {img ? (
+                        <img src={img} alt="" className="h-10 w-10 rounded-sm object-cover" />
+                      ) : (
+                        <div className="flex h-10 w-10 items-center justify-center rounded-sm bg-muted text-xs font-semibold">
+                          {p.imageLabel.slice(0, 2) || p.name.slice(0, 2).toUpperCase()}
+                        </div>
+                      )}
+                      <div>
+                        <div className="font-medium">{p.name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {p.sku} · {p.variants.length} var.
+                        </div>
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell className="num text-right">{moneyUsd(p.promoPrice ?? p.salePrice)}</TableCell>
+                  <TableCell className={`num text-right ${productStock(p) <= p.minStock ? "text-primary" : ""}`}>
+                    {productStock(p)}
+                  </TableCell>
+                  {can("products.manage") && (
+                    <TableCell className="text-right">
+                      <Button size="icon" variant="ghost" onClick={() => openEdit(p)}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={async () => {
+                          if (!confirm(`Supprimer « ${p.name} » ?`)) return;
+                          try {
+                            await productsService.remove(p.id);
+                            toast.success("Article supprimé");
+                          } catch (error) {
+                            toast.error(error instanceof Error ? error.message : "Suppression impossible");
+                          }
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  )}
+                </TableRow>
+              );
+            })}
             {list.length === 0 && (
               <TableRow>
-                <TableCell colSpan={3} className="text-sm text-muted-foreground">
+                <TableCell colSpan={can("products.manage") ? 4 : 3} className="text-sm text-muted-foreground">
                   Aucun article. Ajoutez le premier.
                 </TableCell>
               </TableRow>
@@ -149,15 +236,51 @@ function ProductsPage() {
         </Table>
       </div>
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next);
+          if (!next) reset();
+        }}
+      >
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Nouvel article</DialogTitle>
+            <DialogTitle>{editing ? "Modifier l'article" : "Nouvel article"}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-3">
             <div>
               <Label>Nom</Label>
               <Input value={name} onChange={(e) => setName(e.target.value)} />
+            </div>
+            <div>
+              <Label>Photo</Label>
+              <div className="mt-1 flex items-center gap-3">
+                {imageUrl ? (
+                  <img src={imageUrl} alt="" className="h-16 w-16 rounded-sm object-cover" />
+                ) : (
+                  <div className="flex h-16 w-16 items-center justify-center rounded-sm border text-[10px] text-muted-foreground">
+                    Aperçu
+                  </div>
+                )}
+                <Input
+                  type="file"
+                  accept="image/*"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    try {
+                      setImageUrl(await fileToJpegDataUrl(file));
+                    } catch {
+                      toast.error("Image illisible");
+                    }
+                  }}
+                />
+              </div>
+              {imageUrl && (
+                <button type="button" className="mt-1 text-xs text-muted-foreground underline" onClick={() => setImageUrl("")}>
+                  Retirer la photo
+                </button>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -192,11 +315,11 @@ function ProductsPage() {
               </div>
               <div>
                 <Label>Prix d'achat USD</Label>
-                <Input type="number" value={purchase} onChange={(e) => setPurchase(+e.target.value)} />
+                <AmountInput value={purchase} onValueChange={setPurchase} placeholder="—" />
               </div>
               <div>
                 <Label>Prix de vente USD</Label>
-                <Input type="number" value={sale} onChange={(e) => setSale(+e.target.value)} />
+                <AmountInput value={sale} onValueChange={setSale} placeholder="—" />
               </div>
             </div>
             <div>
@@ -251,11 +374,11 @@ function ProductsPage() {
                   return (
                     <div key={key} className="flex items-center justify-between gap-2 text-sm">
                       <span className="truncate">{variantLabel(c)}</span>
-                      <Input
+                      <AmountInput
                         className="h-8 w-20"
-                        type="number"
-                        value={stocks[key] ?? 0}
-                        onChange={(e) => setStocks((s) => ({ ...s, [key]: +e.target.value }))}
+                        value={stocks[key] ?? ""}
+                        onValueChange={(raw) => setStocks((s) => ({ ...s, [key]: raw }))}
+                        placeholder="—"
                       />
                     </div>
                   );
@@ -264,7 +387,7 @@ function ProductsPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button onClick={save}>Enregistrer</Button>
+            <Button onClick={save}>{editing ? "Enregistrer" : "Créer"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
