@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { ROLES } from "@/lib/roles";
+import { ROLES, canOpenPath, homePath } from "@/lib/roles";
 import { useAppState } from "@/lib/app-store";
 import { clearSession, loadSession, savePoste, saveSession } from "@/lib/session";
 import type { Permission, RoleCode, User } from "@/types";
@@ -52,6 +52,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     if (pathname === "/login") return;
     if (!userId || !user) {
       navigate({ to: "/login" });
+      return;
+    }
+    if (!canOpenPath(user.role, user.extraPermissions ?? [], pathname)) {
+      navigate({ to: homePath(user.role) });
     }
   }, [ready, userId, user, pathname, navigate]);
 

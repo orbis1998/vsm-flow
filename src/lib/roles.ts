@@ -99,3 +99,36 @@ export const ROLES: Record<RoleCode, Role> = {
 };
 
 export const ROLE_LIST = Object.values(ROLES);
+
+export function homePath(role: RoleCode): string {
+  if (role === "LIVREUR") return "/livreur";
+  if (role === "CAISSIER") return "/pos";
+  if (role === "MAGASINIER") return "/stock";
+  if (role === "COMPTABLE") return "/finance";
+  if (role === "RESP_LOGISTIQUE") return "/logistique";
+  return "/";
+}
+
+export const ROUTE_PERMISSION: Array<{ path: string; perm: Permission }> = [
+  { path: "/", perm: "dashboard.view" },
+  { path: "/commandes", perm: "orders.view" },
+  { path: "/pos", perm: "pos.use" },
+  { path: "/produits", perm: "products.view" },
+  { path: "/stock", perm: "stock.view" },
+  { path: "/logistique", perm: "logistics.view" },
+  { path: "/livreur", perm: "driver.space" },
+  { path: "/clients", perm: "customers.view" },
+  { path: "/fournisseurs", perm: "suppliers.view" },
+  { path: "/finance", perm: "finance.view" },
+  { path: "/rapports", perm: "reports.view" },
+  { path: "/utilisateurs", perm: "users.view" },
+  { path: "/parametres", perm: "settings.view" },
+];
+
+export function canOpenPath(role: RoleCode, extra: Permission[], pathname: string): boolean {
+  const perms = new Set([...ROLES[role].permissions, ...extra]);
+  if (pathname === "/") return perms.has("dashboard.view");
+  const hit = ROUTE_PERMISSION.find((r) => r.path !== "/" && (pathname === r.path || pathname.startsWith(`${r.path}/`)));
+  if (!hit) return true;
+  return perms.has(hit.perm);
+}

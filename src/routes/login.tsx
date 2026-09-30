@@ -9,6 +9,8 @@ import { APP_STATE_KEY } from "@/lib/app-state";
 import { saveSession } from "@/lib/session";
 import { useQueryClient } from "@tanstack/react-query";
 import { APP_NAME, APP_TAGLINE } from "@/lib/brand";
+import { homePath } from "@/lib/roles";
+import type { RoleCode } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -59,8 +61,7 @@ function LoginPage() {
         queryFn: () => getAppStateFn(),
         staleTime: 60_000,
       });
-      const home = user.role === "LIVREUR" ? "/livreur" : user.role === "CAISSIER" ? "/pos" : "/";
-      await navigate({ to: home });
+      await navigate({ to: homePath(user.role as RoleCode) });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Connexion impossible");
     } finally {

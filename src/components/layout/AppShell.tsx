@@ -68,7 +68,15 @@ const MOBILE_BY_ROLE: Partial<Record<RoleCode, string[]>> = {
 function Nav({ onNavigate }: { onNavigate?: () => void }) {
   const { can, role } = useSession();
   const path = useRouterState({ select: (s) => s.location.pathname });
-  const items = NAV.filter((n) => can(n.perm) && (!n.only || n.only.includes(role)));
+  let items = NAV.filter((n) => can(n.perm) && (!n.only || n.only.includes(role)));
+  const order = MOBILE_BY_ROLE[role];
+  if (order) {
+    items = [...items].sort((a, b) => {
+      const ia = order.indexOf(a.to);
+      const ib = order.indexOf(b.to);
+      return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+    });
+  }
   return (
     <nav className="flex flex-col gap-0.5 p-3">
       {items.map((n) => {
@@ -140,10 +148,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   const mobilePaths = MOBILE_BY_ROLE[role] ?? ["/", "/commandes", "/pos", "/stock"];
   const mobileNav = NAV.filter(
     (n) => can(n.perm) && (!n.only || n.only.includes(role)) && mobilePaths.includes(n.to),
-  );
+  ).sort((a, b) => mobilePaths.indexOf(a.to) - mobilePaths.indexOf(b.to));
 
   return (
-    <div className="flex min-h-dvh bg-background pb-16 lg:pb-0">
+    <div className="flex min-h-dvh bg-background pb-[4.75rem] lg:pb-0">
       <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col overflow-y-auto bg-sidebar lg:flex">
         <Brand />
         <Nav />
@@ -240,8 +248,15 @@ export function AppShell({ children }: { children: ReactNode }) {
         <main className="min-w-0 flex-1 p-3 sm:p-6">{children}</main>
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t bg-background/95 px-1 py-1 backdrop-blur lg:hidden">
-        {mobileNav.slice(0, 4).map((n) => {
+      <nav
+        className={cn(
+          "fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 px-1 pt-1 backdrop-blur lg:hidden",
+          "grid pointer-events-none",
+          mobileNav.length <= 2 ? "grid-cols-2" : mobileNav.length === 3 ? "grid-cols-3" : "grid-cols-4",
+        )}
+        style={{ paddingBottom: "max(0.25rem, env(safe-area-inset-bottom))" }}
+      >
+        {mobileNav.map((n) => {
           const active = n.to === "/" ? path === "/" : path.startsWith(n.to);
           const Icon = n.icon;
           return (
@@ -249,7 +264,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               key={n.to}
               to={n.to}
               className={cn(
-                "flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 px-0.5 text-center text-[10px] font-medium leading-tight",
+                "pointer-events-auto flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 px-0.5 text-center text-[11px] font-medium leading-tight",
                 active ? "text-primary" : "text-muted-foreground",
               )}
             >

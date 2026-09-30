@@ -1,11 +1,12 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { useAppState } from "@/lib/app-store";
 import { productStock } from "@/lib/catalog";
 import { addDaysYmd, EXPENSE_LABEL, kinshasaYmd, moneyCdf, moneyUsd, num, pct, ymdOf } from "@/lib/format";
 import { APP_NAME } from "@/lib/brand";
+import { homePath } from "@/lib/roles";
 import { useSession } from "@/hooks/useSession";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Forbidden, PageHeader, StatCard } from "@/components/common/ui-bits";
+import { PageHeader, StatCard } from "@/components/common/ui-bits";
 import type { ExpenseCategory } from "@/types";
 
 export const Route = createFileRoute("/")({
@@ -33,14 +34,14 @@ function changePct(now: number, prev: number) {
 }
 
 function Dashboard() {
-  const { can, user } = useSession();
+  const { can, user, role } = useSession();
   const company = useAppState((s) => s.company);
   const orders = useAppState((s) => s.orders);
   const sales = useAppState((s) => s.sales);
   const products = useAppState((s) => s.products);
   const expenses = useAppState((s) => s.expenses);
   const purchaseOrders = useAppState((s) => s.purchaseOrders);
-  if (!can("dashboard.view")) return <Forbidden />;
+  if (!can("dashboard.view")) return <Navigate to={homePath(role)} />;
 
   const today = kinshasaYmd();
   const weekAgo = addDaysYmd(-7);

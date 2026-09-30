@@ -52,7 +52,7 @@ export type AppMutation =
       input: { productId: ID; variantId?: ID; quantity: number; type: StockMovementType; note: string };
     }
   | { op: "order.create"; input: OrderCreateInput }
-  | { op: "order.status"; id: ID; status: OrderStatus; note?: string }
+  | { op: "order.status"; id: ID; status: OrderStatus; note?: string; receivedUsd?: number; receivedCdf?: number }
   | { op: "order.assign"; id: ID; driverId: ID }
   | { op: "order.update"; id: ID; patch: Partial<Order> }
   | { op: "order.remove"; id: ID }
@@ -105,7 +105,10 @@ export const mutateAppFn = createServerFn({ method: "POST", strict: false })
         case "order.create":
           return m.createOrder(client, data.input);
         case "order.status":
-          await m.updateOrderStatus(client, data.id, data.status, data.note ?? "Statut mis à jour");
+          await m.updateOrderStatus(client, data.id, data.status, data.note ?? "Statut mis à jour", {
+            receivedUsd: data.receivedUsd,
+            receivedCdf: data.receivedCdf,
+          });
           return null;
         case "order.assign":
           await m.assignDriver(client, data.id, data.driverId);

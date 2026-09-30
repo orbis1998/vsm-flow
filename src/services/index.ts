@@ -88,8 +88,20 @@ export const ordersService = {
   }) {
     return mutate({ op: "order.create", input }) as Promise<Order>;
   },
-  async updateStatus(id: ID, status: OrderStatus, note = "Statut mis à jour") {
-    await mutate({ op: "order.status", id, status, note });
+  async updateStatus(
+    id: ID,
+    status: OrderStatus,
+    note = "Statut mis à jour",
+    received?: { receivedUsd?: number; receivedCdf?: number },
+  ) {
+    await mutate({
+      op: "order.status",
+      id,
+      status,
+      note,
+      ...(received?.receivedUsd != null ? { receivedUsd: received.receivedUsd } : {}),
+      ...(received?.receivedCdf != null ? { receivedCdf: received.receivedCdf } : {}),
+    });
   },
   async assignDriver(id: ID, driverId: ID) {
     await mutate({ op: "order.assign", id, driverId });

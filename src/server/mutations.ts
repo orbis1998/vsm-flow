@@ -356,13 +356,24 @@ export async function createOrder(client: Client, input: OrderCreateInput): Prom
   };
 }
 
-export async function updateOrderStatus(client: Client, id: ID, status: OrderStatus, note: string): Promise<void> {
+export async function updateOrderStatus(
+  client: Client,
+  id: ID,
+  status: OrderStatus,
+  note: string,
+  received?: { receivedUsd?: number; receivedCdf?: number },
+): Promise<void> {
   const who = await actor(client);
   const current = await client.query("select * from orders where id = $1", [id]);
   const order = current.rows[0];
-  if (!order) return;
+  if (!order) throw new Error("Commande introuvable.");
+  const receivedUsd = received?.receivedUsd ?? Number(order.received_usd ?? 0);
+  const receivedCdf = received?.receivedCdf ?? Number(order.received_cdf ?? 0);
   const paymentState = status === "livree" ? "paye" : order.payment_state;
-  await client.query("update orders set status = $2, payment_state = $3 where id = $1", [id, status, paymentState]);
+  await client.query(
+    "update orders set status = $2, payment_state = $3, received_usd = $4, received_cdf = $5 where id = $1",
+    [id, status, paymentState, receivedUsd, receivedCdf],
+  );
   await client.query(
     `insert into order_events (id, order_id, status, note, user_name, created_at)
      values ($1,$2,$3,$4,$5, now())`,
@@ -387,9 +398,9 @@ export async function updateOrderStatus(client: Client, id: ID, status: OrderSta
        values ($1,$2,'encaissement',$3,$4,'entree', now())`,
       [
         nextId("trx"),
-        order.reference,
+        `${order.reference}-${nextId("enc")}`,
         `Encaissement livraison — ${order.customer_name}`,
-        order.products_total,
+        Number(order.products_total) || 0,
       ],
     );
   }
