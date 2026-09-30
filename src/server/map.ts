@@ -103,8 +103,8 @@ export function mapDriver(row: Record<string, unknown>, zoneIds: string[]): Deli
     phone: String(row.phone ?? ""),
     vehicle: String(row.vehicle ?? ""),
     zoneIds,
-    active: Boolean(row.active),
-    canSell: Boolean(row.can_sell),
+    canSell: row.can_sell === true || row.can_sell === "t" || row.can_sell === "true",
+    active: row.active !== false && row.active !== "f" && row.active !== "false",
   };
 }
 

@@ -64,19 +64,19 @@ function StockPage() {
   return (
     <div>
       <PageHeader title="Stock" subtitle="Niveaux, alertes et mouvements" />
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard label="Valeur du stock" value={money(value)} hint="au prix d'achat" accent />
         <StatCard label="Unités en stock" value={num(units)} />
         <StatCard label="Sous le seuil" value={num(low.length)} />
       </div>
       <Tabs defaultValue="niveaux" className="mt-6">
-        <TabsList>
+        <TabsList className="h-auto flex-wrap">
           <TabsTrigger value="niveaux">Niveaux</TabsTrigger>
           <TabsTrigger value="mouvements">Mouvements</TabsTrigger>
           {can("stock.manage") && <TabsTrigger value="saisie">Saisir</TabsTrigger>}
         </TabsList>
         <TabsContent value="niveaux">
-          <div className="rounded-md border">
+          <div className="overflow-x-auto rounded-md border">
             <Table>
               <TableHeader><TableRow><TableHead>Produit</TableHead><TableHead className="text-right">Stock</TableHead><TableHead className="text-right">Réservé</TableHead><TableHead className="text-right">Seuil</TableHead></TableRow></TableHeader>
               <TableBody>
@@ -96,7 +96,7 @@ function StockPage() {
           </div>
         </TabsContent>
         <TabsContent value="mouvements">
-          <div className="rounded-md border">
+          <div className="overflow-x-auto rounded-md border">
             <Table>
               <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Produit</TableHead><TableHead>Type</TableHead><TableHead className="text-right">Qté</TableHead></TableRow></TableHeader>
               <TableBody>

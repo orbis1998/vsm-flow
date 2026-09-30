@@ -106,7 +106,7 @@ function Dashboard() {
         title={`Bonjour, ${user.fullName.split(" ")[0] || user.badge}`}
         subtitle={`${company.name || APP_NAME} · activité du ${dayLabel(today)}`}
       />
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Gains aujourd'hui"
           value={moneyUsd(merchToday)}
@@ -158,17 +158,17 @@ function Dashboard() {
             <CardTitle className="text-base">Encaissé aujourd'hui</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
-            <div className="flex justify-between">
-              <span>Reçu en USD</span>
-              <span className="num font-semibold">{moneyUsd(recUsdToday)}</span>
+            <div className="flex justify-between gap-2">
+              <span className="min-w-0">Reçu en USD</span>
+              <span className="num shrink-0 font-semibold">{moneyUsd(recUsdToday)}</span>
             </div>
-            <div className="flex justify-between">
-              <span>Reçu en CDF</span>
-              <span className="num font-semibold">{moneyCdf(recCdfToday)}</span>
+            <div className="flex justify-between gap-2">
+              <span className="min-w-0">Reçu en CDF</span>
+              <span className="num shrink-0 font-semibold">{moneyCdf(recCdfToday)}</span>
             </div>
-            <div className="flex justify-between border-t pt-2 text-muted-foreground">
-              <span>Frais livraison (CDF, hors CA)</span>
-              <span className="num">{moneyCdf(feesCdfToday)}</span>
+            <div className="flex justify-between gap-2 border-t pt-2 text-muted-foreground">
+              <span className="min-w-0">Frais livraison (CDF, hors CA)</span>
+              <span className="num shrink-0">{moneyCdf(feesCdfToday)}</span>
             </div>
             <p className="text-xs text-muted-foreground">Taux : 1 USD = {num(rate)} CDF</p>
           </CardContent>
@@ -181,17 +181,23 @@ function Dashboard() {
             <CardTitle className="text-base">Dépenses</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="mb-2 grid grid-cols-[1fr_auto_auto] gap-2 text-[11px] uppercase tracking-wide text-muted-foreground">
+            <div className="mb-2 hidden grid-cols-[minmax(0,1fr)_5rem_5rem] gap-2 text-[11px] uppercase tracking-wide text-muted-foreground sm:grid">
               <span>Poste</span>
-              <span>Aujourd'hui</span>
-              <span>7 jours</span>
+              <span className="text-right">Aujourd'hui</span>
+              <span className="text-right">7 jours</span>
             </div>
             <div className="space-y-2">
               {spendRows.map(([, label, todayAmt, weekAmt]) => (
-                <div key={label} className="grid grid-cols-[1fr_auto_auto] items-center gap-2 text-sm">
-                  <span className="truncate">{label}</span>
-                  <span className="num text-right">{moneyUsd(todayAmt)}</span>
-                  <span className="num w-24 text-right font-medium">{moneyUsd(weekAmt)}</span>
+                <div key={label} className="grid grid-cols-1 gap-0.5 text-sm sm:grid-cols-[minmax(0,1fr)_5rem_5rem] sm:items-center sm:gap-2">
+                  <span className="truncate font-medium sm:font-normal">{label}</span>
+                  <span className="num text-muted-foreground sm:text-right sm:text-foreground">
+                    <span className="sm:hidden">Auj. </span>
+                    {moneyUsd(todayAmt)}
+                  </span>
+                  <span className="num font-medium sm:w-auto sm:text-right">
+                    <span className="sm:hidden">7 j. </span>
+                    {moneyUsd(weekAmt)}
+                  </span>
                 </div>
               ))}
             </div>
@@ -205,18 +211,18 @@ function Dashboard() {
             <CardTitle className="text-base">À surveiller</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span>Commandes en cours</span>
-              <span className="font-semibold">{pending.length}</span>
+            <div className="flex justify-between gap-2">
+              <span className="min-w-0">Commandes en cours</span>
+              <span className="shrink-0 font-semibold">{pending.length}</span>
             </div>
-            <div className="flex justify-between">
-              <span>Stock bas</span>
-              <span className={low.length ? "font-semibold text-primary" : ""}>{low.length}</span>
+            <div className="flex justify-between gap-2">
+              <span className="min-w-0">Stock bas</span>
+              <span className={low.length ? "shrink-0 font-semibold text-primary" : "shrink-0"}>{low.length}</span>
             </div>
             {low.slice(0, 6).map((p) => (
-              <div key={p.id} className="flex justify-between text-muted-foreground">
-                <span className="truncate pr-2">{p.name}</span>
-                <span>{productStock(p)}</span>
+              <div key={p.id} className="flex justify-between gap-2 text-muted-foreground">
+                <span className="min-w-0 truncate">{p.name}</span>
+                <span className="shrink-0">{productStock(p)}</span>
               </div>
             ))}
             {low.length === 0 && <p className="text-muted-foreground">Stock OK.</p>}

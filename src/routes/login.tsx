@@ -52,14 +52,15 @@ function LoginPage() {
     setBusy(true);
     try {
       const user = await loginFn({ data: { login, password } });
-      saveSession(user.id);
+      saveSession(user.id, user.posteId);
       toast.success(`Bienvenue ${user.fullName}`);
       await queryClient.ensureQueryData({
         queryKey: APP_STATE_KEY,
         queryFn: () => getAppStateFn(),
         staleTime: 60_000,
       });
-      await navigate({ to: "/" });
+      const home = user.role === "LIVREUR" ? "/livreur" : user.role === "CAISSIER" ? "/pos" : "/";
+      await navigate({ to: home });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Connexion impossible");
     } finally {

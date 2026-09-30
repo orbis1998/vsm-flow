@@ -164,7 +164,7 @@ function ProductsPage() {
         }
       />
       <Input placeholder="Rechercher…" value={q} onChange={(e) => setQ(e.target.value)} className="mb-4 max-w-xs" />
-      <div className="rounded-md border">
+      <div className="overflow-x-auto rounded-md border">
         <Table>
           <TableHeader>
             <TableRow>

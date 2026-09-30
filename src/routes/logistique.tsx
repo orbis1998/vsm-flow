@@ -31,11 +31,12 @@ function LogisticsPage() {
 
   const toAssign = orders.filter((o) => ["nouvelle", "a_preparer", "prete"].includes(o.status) && !o.driverId);
   const active = orders.filter((o) => ["assignee", "en_livraison"].includes(o.status));
+  const activeDrivers = drivers.filter((d) => d.active);
 
   return (
     <div>
       <PageHeader title="Logistique" subtitle="Livreurs et tournées" />
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="À assigner" value={toAssign.length} accent />
         <StatCard label="En cours" value={active.length} />
         <StatCard label="Livreurs actifs" value={drivers.filter((d) => d.active).length} />
@@ -53,10 +54,29 @@ function LogisticsPage() {
                   <div className="text-xs text-muted-foreground">{communeName(o.communeId)}, {zoneName(o.zoneId)}</div>
                 </div>
                 {can("logistics.manage") && (
-                  <Select onValueChange={async (v) => { await ordersService.assignDriver(o.id, v); toast.success("Livreur assigné"); }}>
-                    <SelectTrigger className="h-8 w-40"><SelectValue placeholder="Assigner…" /></SelectTrigger>
-                    <SelectContent>{drivers.filter((d) => d.active).map((d) => <SelectItem key={d.id} value={d.id}>{d.fullName}</SelectItem>)}</SelectContent>
-                  </Select>
+                  activeDrivers.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">Aucun livreur actif.</p>
+                  ) : (
+                    <Select
+                      onValueChange={async (v) => {
+                        try {
+                          await ordersService.assignDriver(o.id, v);
+                          toast.success("Livreur assigné");
+                        } catch (error) {
+                          toast.error(error instanceof Error ? error.message : "Assignation impossible");
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="h-8 w-full max-w-44 sm:w-40">
+                        <SelectValue placeholder="Assigner…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {activeDrivers.map((d) => (
+                          <SelectItem key={d.id} value={d.id}>{d.fullName}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )
                 )}
               </div>
             ))}
@@ -68,12 +88,12 @@ function LogisticsPage() {
             return (
               <Card key={d.id} className="rounded-md">
                 <CardContent className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="font-semibold">{d.fullName}</div>
-                      <div className="text-xs text-muted-foreground">{d.vehicle} · {d.phone}</div>
+                  <div className="flex min-w-0 items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="truncate font-semibold">{d.fullName}</div>
+                      <div className="truncate text-xs text-muted-foreground">{d.vehicle} · {d.phone}</div>
                     </div>
-                    <div className="flex gap-1">
+                    <div className="flex shrink-0 flex-wrap justify-end gap-1">
                       {d.canSell && <Badge variant="outline">Vente</Badge>}
                       <Badge className={d.active ? "" : "bg-muted text-muted-foreground"}>{d.active ? "Actif" : "Inactif"}</Badge>
                     </div>
@@ -81,8 +101,8 @@ function LogisticsPage() {
                   {mine.length > 0 && (
                     <div className="mt-3 space-y-1">
                       {mine.map((o) => (
-                        <div key={o.id} className="flex items-center justify-between text-sm">
-                          <span className="truncate">{o.customerName} · {communeName(o.communeId)}</span>
+                        <div key={o.id} className="flex min-w-0 items-center justify-between gap-2 text-sm">
+                          <span className="min-w-0 truncate">{o.customerName} · {communeName(o.communeId)}</span>
                           <OrderStatusBadge status={o.status} />
                         </div>
                       ))}

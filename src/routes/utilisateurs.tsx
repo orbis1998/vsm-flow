@@ -123,18 +123,19 @@ function UsersPage() {
         )}
       />
       <Tabs defaultValue="equipe">
-        <TabsList>
+        <TabsList className="h-auto flex-wrap">
           <TabsTrigger value="equipe">Équipe</TabsTrigger>
           <TabsTrigger value="roles">Rôles</TabsTrigger>
           <TabsTrigger value="audit">Journal</TabsTrigger>
         </TabsList>
         <TabsContent value="equipe">
-          <div className="rounded-md border">
+          <div className="overflow-x-auto rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Nom</TableHead>
                   <TableHead>Rôle</TableHead>
+                  <TableHead className="hidden sm:table-cell">Boutique</TableHead>
                   <TableHead>Statut</TableHead>
                   <TableHead className="hidden md:table-cell">Dernière connexion</TableHead>
                   {can("users.manage") && <TableHead className="text-right">Actions</TableHead>}
@@ -150,6 +151,9 @@ function UsersPage() {
                       </div>
                     </TableCell>
                     <TableCell>{ROLES[u.role].label}</TableCell>
+                    <TableCell className="hidden max-w-[9rem] truncate text-xs sm:table-cell">
+                      {postes.find((p) => p.id === u.posteId)?.name ?? "—"}
+                    </TableCell>
                     <TableCell><Badge variant="outline">{u.status}</Badge></TableCell>
                     <TableCell className="hidden text-xs md:table-cell">{u.lastLoginAt ? dateTime(u.lastLoginAt) : "—"}</TableCell>
                     {can("users.manage") && (
@@ -257,16 +261,19 @@ function UsersPage() {
               </div>
             )}
             <div>
-              <Label>Poste rattaché</Label>
+              <Label>Boutique rattachée</Label>
               <Select value={form.posteId || "none"} onValueChange={(v) => setForm({ ...form, posteId: v === "none" ? "" : v })}>
-                <SelectTrigger><SelectValue placeholder="Aucun" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Aucune" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">Aucun</SelectItem>
+                  <SelectItem value="none">Aucune</SelectItem>
                   {postes.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                    <SelectItem key={p.id} value={p.id}>{p.name} · {p.type}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Visible sur l'espace du membre (caisse et courses). Les ventes POS s'enregistrent sur la boutique choisie en haut de l'écran.
+              </p>
             </div>
           </div>
           <DialogFooter><Button onClick={save}>Enregistrer</Button></DialogFooter>

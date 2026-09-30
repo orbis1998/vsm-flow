@@ -37,6 +37,7 @@ export const Route = createFileRoute("/commandes")({
 function OrdersPage() {
   const { can } = useSession();
   const orders = useAppState((s) => s.orders);
+  const drivers = useAppState((s) => s.drivers);
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<string>("all");
   const [selected, setSelected] = useState<string | null>(null);
@@ -82,7 +83,7 @@ function OrdersPage() {
       {filtered.length === 0 ? (
         <Empty>Aucune commande.</Empty>
       ) : (
-        <div className="rounded-md border">
+        <div className="overflow-x-auto rounded-md border">
           <Table>
             <TableHeader>
               <TableRow>
@@ -92,6 +93,7 @@ function OrdersPage() {
                 <TableHead className="text-right">Marchandise</TableHead>
                 <TableHead className="hidden text-right md:table-cell">Livraison CDF</TableHead>
                 <TableHead>Statut</TableHead>
+                <TableHead className="hidden lg:table-cell">Livreur</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -106,6 +108,9 @@ function OrdersPage() {
                   <TableCell className="num text-right font-semibold">{moneyUsd(o.productsTotal)}</TableCell>
                   <TableCell className="num hidden text-right md:table-cell">{moneyCdf(o.deliveryFee)}</TableCell>
                   <TableCell><OrderStatusBadge status={o.status} /></TableCell>
+                  <TableCell className="hidden max-w-[8rem] truncate text-xs lg:table-cell">
+                    {drivers.find((d) => d.id === o.driverId)?.fullName ?? "—"}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -113,18 +118,28 @@ function OrdersPage() {
         </div>
       )}
       <OrderSheet order={current} onClose={() => setSelected(null)} />
-      <NewOrderDialog open={creating} onOpenChange={setCreating} />
+      <NewOrderDialog
+        open={creating}
+        onOpenChange={setCreating}
+        onCreated={(id) => {
+          setCreating(false);
+          setSelected(id);
+        }}
+      />
     </div>
   );
 }
 
 function OrderSheet({ order, onClose }: { order: Order | null; onClose: () => void }) {
   const { can } = useSession();
-  const drivers = useAppState((s) => s.drivers.filter((d) => d.active));
+  const allDrivers = useAppState((s) => s.drivers);
   const products = useAppState((s) => s.products);
   const [receivedUsd, setReceivedUsd] = useState("");
   const [receivedCdf, setReceivedCdf] = useState("");
   const [draft, setDraft] = useState<OrderItem[]>([]);
+  const drivers = allDrivers.filter((d) => d.active || d.id === order?.driverId);
+  const driverValue =
+    order?.driverId && drivers.some((d) => d.id === order.driverId) ? order.driverId : undefined;
 
   useEffect(() => {
     setReceivedUsd(order?.receivedUsd ? String(order.receivedUsd) : "");
@@ -138,8 +153,9 @@ function OrderSheet({ order, onClose }: { order: Order | null; onClose: () => vo
         {order && (
           <>
             <SheetHeader>
-              <SheetTitle className="flex items-center gap-2">
-                {order.reference} <OrderStatusBadge status={order.status} />
+              <SheetTitle className="flex min-w-0 flex-wrap items-center gap-2">
+                <span className="truncate">{order.reference}</span>
+                <OrderStatusBadge status={order.status} />
               </SheetTitle>
             </SheetHeader>
             <div className="mt-4 space-y-4 text-sm">
@@ -163,7 +179,11 @@ function OrderSheet({ order, onClose }: { order: Order | null; onClose: () => vo
                       {can("orders.manage") && product && product.variants.length > 0 && (
                         <div className="mt-1 flex items-center gap-2">
                           <Select
-                            value={it.variantId ?? product.variants[0]?.id ?? ""}
+                            value={
+                              it.variantId && product.variants.some((v) => v.id === it.variantId)
+                                ? it.variantId
+                                : product.variants[0]?.id
+                            }
                             onValueChange={(v) => {
                               const variant = product.variants.find((x) => x.id === v);
                               const name = variant ? `${product.name} (${variantLabel(variant.options)})` : product.name;
@@ -262,22 +282,39 @@ function OrderSheet({ order, onClose }: { order: Order | null; onClose: () => vo
                       </SelectContent>
                     </Select>
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <Label>Livreur</Label>
-                    <Select
-                      value={order.driverId ?? ""}
-                      onValueChange={async (v) => {
-                        await ordersService.assignDriver(order.id, v);
-                        toast.success("Livreur assigné");
-                      }}
-                    >
-                      <SelectTrigger><SelectValue placeholder="Assigner…" /></SelectTrigger>
-                      <SelectContent>
-                        {drivers.map((d) => (
-                          <SelectItem key={d.id} value={d.id}>{d.fullName}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    {drivers.length === 0 ? (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Aucun livreur. Créez un compte rôle Livreur dans Équipe.
+                      </p>
+                    ) : (
+                      <Select
+                        value={driverValue}
+                        onValueChange={async (v) => {
+                          try {
+                            await ordersService.assignDriver(order.id, v);
+                            toast.success("Livreur assigné");
+                          } catch (error) {
+                            toast.error(error instanceof Error ? error.message : "Assignation impossible");
+                          }
+                        }}
+                      >
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="Assigner un livreur…" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {drivers.map((d) => (
+                            <SelectItem key={d.id} value={d.id}>{d.fullName}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                    {order.driverId && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {drivers.find((d) => d.id === order.driverId)?.fullName ?? "Assigné"}
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
@@ -313,11 +350,20 @@ function OrderSheet({ order, onClose }: { order: Order | null; onClose: () => vo
   );
 }
 
-function NewOrderDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+function NewOrderDialog({
+  open,
+  onOpenChange,
+  onCreated,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  onCreated: (id: string) => void;
+}) {
   const customers = useAppState((s) => s.customers);
   const products = useAppState((s) => s.products);
   const communes = useAppState((s) => s.communes);
   const zones = useAppState((s) => s.zones);
+  const drivers = useAppState((s) => s.drivers.filter((d) => d.active));
   const zonesOf = (cid: string) => zones.filter((z) => z.communeId === cid);
   const [customerId, setCustomerId] = useState("");
   const [customerName, setCustomerName] = useState("");
@@ -327,10 +373,14 @@ function NewOrderDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
   const [address, setAddress] = useState("");
   const [landmark, setLandmark] = useState("");
   const [notes, setNotes] = useState("");
-  const [lines, setLines] = useState<Array<{ productId: string; qty: number }>>([]);
+  const [lines, setLines] = useState<Array<{ productId: string; variantId: string; qty: number }>>([]);
   const [productId, setProductId] = useState("");
+  const [variantId, setVariantId] = useState("");
+  const [driverId, setDriverId] = useState("");
 
   const available = products.filter(productInStock);
+  const selectedProduct = products.find((p) => p.id === productId);
+  const stockVariants = selectedProduct?.variants.filter((v) => v.stock > 0) ?? [];
   const fee = zones.find((z) => z.id === zoneId)?.defaultFee ?? 0;
   const total = lines.reduce((s, l) => {
     const p = products.find((x) => x.id === l.productId);
@@ -344,8 +394,15 @@ function NewOrderDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
       toast.error("Article en rupture de stock");
       return;
     }
-    setLines((l) => [...l, { productId, qty: 1 }]);
+    const chosen = variantId || pickAvailableVariant(p)?.id;
+    const variant = p.variants.find((v) => v.id === chosen);
+    if (!variant || variant.stock < 1) {
+      toast.error("Choisissez une variante en stock");
+      return;
+    }
+    setLines((l) => [...l, { productId, variantId: variant.id, qty: 1 }]);
     setProductId("");
+    setVariantId("");
   };
 
   const submit = async () => {
@@ -357,22 +414,23 @@ function NewOrderDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
     for (const l of lines) {
       const p = products.find((x) => x.id === l.productId);
       if (!p) continue;
-      const variant = pickAvailableVariant(p, l.qty);
-      if (!variant) {
-        toast.error(`${p.name} n'a plus de stock`);
+      const variant = p.variants.find((v) => v.id === l.variantId) ?? pickAvailableVariant(p, l.qty);
+      if (!variant || variant.stock < l.qty) {
+        toast.error(`${p.name} : stock insuffisant`);
         return;
       }
+      const label = variantLabel(variant.options);
       items.push({
         productId: p.id,
         variantId: variant.id,
-        productName: p.name,
+        productName: label && label !== "Standard" ? `${p.name} (${label})` : p.name,
         quantity: l.qty,
         unitPrice: p.promoPrice ?? p.salePrice,
         discount: 0,
       });
     }
     try {
-      await ordersService.create({
+      const order = await ordersService.create({
         ...(customerId ? { customerId } : {}),
         customerName: customerName.trim(),
         phone,
@@ -383,13 +441,16 @@ function NewOrderDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
         notes,
         deliveryFee: fee,
         items,
+        ...(driverId ? { driverId } : {}),
       });
-      toast.success("Commande créée");
+      toast.success(driverId ? "Commande créée et assignée" : "Commande créée");
       setLines([]);
       setCustomerId("");
       setCustomerName("");
       setPhone("");
+      setDriverId("");
       onOpenChange(false);
+      if (order?.id) onCreated(order.id);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Enregistrement impossible");
     }
@@ -429,7 +490,7 @@ function NewOrderDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
               </SelectContent>
             </Select>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <Label>Nom du client (facultatif)</Label>
               <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Laissé vide = Client" />
@@ -439,7 +500,7 @@ function NewOrderDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
               <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <Label>Commune</Label>
               <Select value={communeId} onValueChange={(v) => { setCommuneId(v); setZoneId(zonesOf(v)[0]?.id ?? ""); }}>
@@ -458,38 +519,78 @@ function NewOrderDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
           <div><Label>Adresse</Label><Input value={address} onChange={(e) => setAddress(e.target.value)} /></div>
           <div><Label>Point de repère</Label><Input value={landmark} onChange={(e) => setLandmark(e.target.value)} /></div>
           <div>
-            <Label>Produits en stock</Label>
-            <div className="flex gap-2">
-              <Select value={productId} onValueChange={setProductId}>
-                <SelectTrigger><SelectValue placeholder="Ajouter un produit" /></SelectTrigger>
+            <Label>Articles et variantes</Label>
+            <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+              <Select
+                value={productId || undefined}
+                onValueChange={(v) => {
+                  setProductId(v);
+                  const p = products.find((x) => x.id === v);
+                  const first = p?.variants.find((x) => x.stock > 0);
+                  setVariantId(first?.id ?? "");
+                }}
+              >
+                <SelectTrigger><SelectValue placeholder="Produit" /></SelectTrigger>
                 <SelectContent>
                   {available.length === 0 ? (
                     <SelectItem value="__empty" disabled>Aucun article en stock</SelectItem>
                   ) : (
                     available.map((p) => (
                       <SelectItem key={p.id} value={p.id}>
-                        {p.name} — {moneyUsd(p.promoPrice ?? p.salePrice)} · {productStock(p)}
+                        {p.name} · {productStock(p)}
                       </SelectItem>
                     ))
                   )}
                 </SelectContent>
               </Select>
+              <Select value={variantId || undefined} onValueChange={setVariantId} disabled={!productId}>
+                <SelectTrigger><SelectValue placeholder="Variante / taille" /></SelectTrigger>
+                <SelectContent>
+                  {stockVariants.map((v) => (
+                    <SelectItem key={v.id} value={v.id}>
+                      {variantLabel(v.options)} · stock {v.stock}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Button type="button" variant="outline" onClick={addLine}>Ajouter</Button>
             </div>
             <div className="mt-2 space-y-1">
-              {lines.map((l, i) => (
-                <div key={i} className="flex items-center gap-2 text-sm">
-                  <span className="flex-1 truncate">{products.find((p) => p.id === l.productId)?.name}</span>
-                  <Input type="number" min={1} value={l.qty} className="h-8 w-16" onChange={(e) => setLines((ls) => ls.map((x, j) => (j === i ? { ...x, qty: Math.max(1, +e.target.value) } : x)))} />
-                  <Button size="icon" variant="ghost" onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))}><Trash2 className="h-4 w-4" /></Button>
-                </div>
-              ))}
+              {lines.map((l, i) => {
+                const p = products.find((x) => x.id === l.productId);
+                const v = p?.variants.find((x) => x.id === l.variantId);
+                return (
+                  <div key={i} className="flex min-w-0 items-center gap-2 text-sm">
+                    <span className="min-w-0 flex-1 truncate">
+                      {p?.name}
+                      {v ? ` · ${variantLabel(v.options)}` : ""}
+                    </span>
+                    <Input type="number" min={1} value={l.qty} className="h-8 w-16 shrink-0" onChange={(e) => setLines((ls) => ls.map((x, j) => (j === i ? { ...x, qty: Math.max(1, +e.target.value) } : x)))} />
+                    <Button size="icon" variant="ghost" className="shrink-0" onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))}><Trash2 className="h-4 w-4" /></Button>
+                  </div>
+                );
+              })}
             </div>
+          </div>
+          <div>
+            <Label>Livreur (facultatif)</Label>
+            {drivers.length === 0 ? (
+              <p className="mt-1 text-xs text-muted-foreground">Aucun livreur. Créez un compte rôle Livreur dans Équipe.</p>
+            ) : (
+              <Select value={driverId || undefined} onValueChange={setDriverId}>
+                <SelectTrigger><SelectValue placeholder="Assigner plus tard" /></SelectTrigger>
+                <SelectContent>
+                  {drivers.map((d) => (
+                    <SelectItem key={d.id} value={d.id}>{d.fullName}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
           <div><Label>Notes</Label><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} /></div>
           <div className="rounded-md bg-muted p-3 text-sm">
-            <div className="flex justify-between"><span>Marchandise</span><span className="num">{moneyUsd(total)}</span></div>
-            <div className="flex justify-between"><span>Livraison (CDF, hors CA)</span><span className="num">{moneyCdf(fee)}</span></div>
+            <div className="flex justify-between gap-2"><span>Marchandise</span><span className="num shrink-0">{moneyUsd(total)}</span></div>
+            <div className="flex justify-between gap-2"><span>Livraison (CDF, hors CA)</span><span className="num shrink-0">{moneyCdf(fee)}</span></div>
           </div>
         </div>
         <DialogFooter><Button onClick={submit}>Enregistrer</Button></DialogFooter>

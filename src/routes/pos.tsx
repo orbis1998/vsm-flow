@@ -94,7 +94,15 @@ function PosPage() {
 
   return (
     <div>
-      <PageHeader title="Point de vente" subtitle={postes.find((p) => p.id === posteId)?.name} />
+      <PageHeader
+        title="Point de vente"
+        subtitle={postes.find((p) => p.id === posteId)?.name ?? "Choisissez une boutique en haut de l'écran"}
+      />
+      {!posteId && (
+        <p className="mb-3 text-sm text-muted-foreground">
+          Aucune boutique sélectionnée. Créez-en une dans Paramètres, puis choisissez-la dans « Boutique / caisse ».
+        </p>
+      )}
       <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
         <div>
           <div className="mb-3 flex gap-2">

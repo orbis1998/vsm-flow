@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { ROLES } from "@/lib/roles";
 import { useAppState } from "@/lib/app-store";
-import { clearSession, loadSession, saveSession } from "@/lib/session";
+import { clearSession, loadSession, savePoste, saveSession } from "@/lib/session";
 import type { Permission, RoleCode, User } from "@/types";
 
 interface SessionValue {
@@ -41,6 +41,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const s = loadSession();
     setUserId(s?.userId ?? null);
+    if (s?.posteId) setPosteId(s.posteId);
     setReady(true);
   }, []);
 
@@ -55,9 +56,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [ready, userId, user, pathname, navigate]);
 
   useEffect(() => {
-    if (user?.posteId) setPosteId(user.posteId);
-    else if (postes[0]) setPosteId(postes[0].id);
-  }, [user, postes]);
+    if (!ready || posteId) return;
+    const next = user?.posteId || postes[0]?.id;
+    if (next) {
+      setPosteId(next);
+      savePoste(next);
+    }
+  }, [ready, user, postes, posteId]);
 
   const value = useMemo<SessionValue>(() => {
     const current = user ?? GUEST;
@@ -69,7 +74,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       role: current.role,
       permissions,
       posteId,
-      setPosteId,
+      setPosteId: (id: string) => {
+        setPosteId(id);
+        savePoste(id);
+      },
       logout: () => {
         clearSession();
         setUserId(null);

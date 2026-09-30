@@ -102,6 +102,13 @@ async function prepare(client: pg.PoolClient) {
   if (tagged.__vsmSchema) return;
   await client.query(`alter table products add column if not exists image_url text not null default ''`);
   await client.query(`alter table orders alter column customer_id drop not null`);
+  await client.query(`
+    insert into delivery_drivers (id, user_id, full_name, phone, vehicle, active, can_sell)
+    select 'drv-' || substr(replace(id, '-', ''), 1, 16), id, full_name, coalesce(phone, ''), 'Moto', true, false
+    from users u
+    where u.role = 'LIVREUR'
+      and not exists (select 1 from delivery_drivers d where d.user_id = u.id)
+  `);
   tagged.__vsmSchema = true;
 }
 

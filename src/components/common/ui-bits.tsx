@@ -15,10 +15,10 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <div className="mb-6 flex flex-wrap items-end justify-between gap-3 border-b pb-4">
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight text-foreground">{title}</h1>
-        {subtitle && <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>}
+    <div className="mb-6 flex min-w-0 flex-wrap items-end justify-between gap-3 border-b pb-4">
+      <div className="min-w-0">
+        <h1 className="truncate text-xl font-semibold tracking-tight text-foreground">{title}</h1>
+        {subtitle && <p className="mt-1 break-words text-sm text-muted-foreground">{subtitle}</p>}
       </div>
       {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
     </div>
@@ -37,11 +37,11 @@ export function StatCard({
   accent?: boolean;
 }) {
   return (
-    <Card className={cn("rounded-md", accent && "border-primary")}>
-      <CardContent className="p-4">
-        <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</div>
-        <div className={cn("num mt-1 text-2xl font-bold", accent && "text-primary")}>{value}</div>
-        {hint && <div className="mt-1 text-xs text-muted-foreground">{hint}</div>}
+    <Card className={cn("min-w-0 rounded-md", accent && "border-primary")}>
+      <CardContent className="min-w-0 p-3 sm:p-4">
+        <div className="truncate text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:text-xs">{label}</div>
+        <div className={cn("num mt-1 break-words text-lg font-bold leading-tight sm:text-2xl", accent && "text-primary")}>{value}</div>
+        {hint && <div className="mt-1 break-words text-xs text-muted-foreground">{hint}</div>}
       </CardContent>
     </Card>
   );

@@ -54,20 +54,20 @@ function FinancePage() {
         subtitle="Synthèse, caisse et mouvements"
         actions={can("finance.manage") && <Button onClick={() => setOpen(true)}>Nouvelle dépense</Button>}
       />
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Chiffre d'affaires" value={money(revenue)} accent />
         <StatCard label="Dépenses" value={money(spent)} />
         <StatCard label="Résultat" value={money(revenue - spent)} />
         <StatCard label="À encaisser" value={money(toCollect)} />
       </div>
       <Tabs defaultValue="mouvements" className="mt-6">
-        <TabsList>
+        <TabsList className="h-auto flex-wrap">
           <TabsTrigger value="mouvements">Mouvements</TabsTrigger>
           <TabsTrigger value="depenses">Dépenses</TabsTrigger>
           <TabsTrigger value="caisse">Caisse</TabsTrigger>
         </TabsList>
         <TabsContent value="mouvements">
-          <div className="rounded-md border">
+          <div className="overflow-x-auto rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -93,7 +93,7 @@ function FinancePage() {
           </div>
         </TabsContent>
         <TabsContent value="depenses">
-          <div className="rounded-md border">
+          <div className="overflow-x-auto rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>

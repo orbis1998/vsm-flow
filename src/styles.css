@@ -190,3 +190,7 @@
 @utility num-cell {
   font-variant-numeric: tabular-nums;
 }
+
+@utility num {
+  font-variant-numeric: tabular-nums;
+}

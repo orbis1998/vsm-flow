@@ -266,6 +266,7 @@ export type OrderCreateInput = {
   notes: string;
   deliveryFee: number;
   items: Array<Omit<OrderItem, "id">>;
+  driverId?: ID;
 };
 
 export async function createOrder(client: Client, input: OrderCreateInput): Promise<Order> {
@@ -289,12 +290,15 @@ export async function createOrder(client: Client, input: OrderCreateInput): Prom
   const reference = `CMD-${new Date().getFullYear()}-${1000 + n + 1}`;
   const evtId = nextId("evt");
   const customerName = input.customerName.trim() || "Client";
+  const assigned = input.driverId ? await resolveDriver(client, input.driverId) : null;
+  const status: OrderStatus = assigned ? "assignee" : "nouvelle";
+  const createdNote = assigned ? `Commande enregistrée · ${assigned.fullName}` : "Commande enregistrée";
 
   await client.query(
     `insert into orders (
       id, reference, customer_id, customer_name, phone, commune_id, zone_id, address_detail, landmark,
-      products_total, delivery_fee, total_to_collect, payment_state, notes, status, received_usd, received_cdf, created_at
-    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'non_paye',$13,'nouvelle',0,0,$14)`,
+      products_total, delivery_fee, total_to_collect, payment_state, notes, status, received_usd, received_cdf, created_at, driver_id
+    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'non_paye',$13,$14,0,0,$15,$16)`,
     [
       id,
       reference,
@@ -309,7 +313,9 @@ export async function createOrder(client: Client, input: OrderCreateInput): Prom
       input.deliveryFee,
       totalToCollect,
       input.notes,
+      status,
       createdAt,
+      assigned?.id ?? null,
     ],
   );
   for (const it of items) {
@@ -321,8 +327,8 @@ export async function createOrder(client: Client, input: OrderCreateInput): Prom
   }
   await client.query(
     `insert into order_events (id, order_id, status, note, user_name, created_at)
-     values ($1,$2,'nouvelle',$3,$4,$5)`,
-    [evtId, id, "Commande enregistrée", who.fullName, createdAt],
+     values ($1,$2,$3,$4,$5,$6)`,
+    [evtId, id, status, createdNote, who.fullName, createdAt],
   );
   await audit(client, "Création commande", "Order", reference);
   return {
@@ -340,12 +346,13 @@ export async function createOrder(client: Client, input: OrderCreateInput): Prom
     totalToCollect,
     paymentState: "non_paye",
     notes: input.notes,
-    status: "nouvelle",
+    status,
     receivedUsd: 0,
     receivedCdf: 0,
     createdAt,
-    history: [{ id: evtId, status: "nouvelle", note: "Commande enregistrée", userName: who.fullName, createdAt }],
+    history: [{ id: evtId, status, note: createdNote, userName: who.fullName, createdAt }],
     ...(input.customerId ? { customerId: input.customerId } : {}),
+    ...(assigned ? { driverId: assigned.id } : {}),
   };
 }
 
@@ -402,22 +409,44 @@ export async function updateOrderStatus(client: Client, id: ID, status: OrderSta
   }
 }
 
+async function resolveDriver(client: Client, driverId: ID): Promise<{ id: string; fullName: string }> {
+  const byId = await client.query("select id, full_name from delivery_drivers where id = $1", [driverId]);
+  if (byId.rows[0]) return { id: String(byId.rows[0].id), fullName: String(byId.rows[0].full_name) };
+  const byUser = await client.query("select id, full_name from delivery_drivers where user_id = $1", [driverId]);
+  if (byUser.rows[0]) return { id: String(byUser.rows[0].id), fullName: String(byUser.rows[0].full_name) };
+  const user = await client.query(
+    "select id, full_name, coalesce(phone, '') as phone from users where id = $1 and role = 'LIVREUR'",
+    [driverId],
+  );
+  if (user.rows[0]) {
+    await client.query(
+      `insert into delivery_drivers (id, user_id, full_name, phone, vehicle, active, can_sell)
+       values ($1,$2,$3,$4,'Moto',true,false)
+       on conflict (user_id) do update set full_name = excluded.full_name, phone = excluded.phone, active = true`,
+      [nextId("drv"), user.rows[0].id, user.rows[0].full_name, user.rows[0].phone],
+    );
+    const again = await client.query("select id, full_name from delivery_drivers where user_id = $1", [user.rows[0].id]);
+    if (again.rows[0]) return { id: String(again.rows[0].id), fullName: String(again.rows[0].full_name) };
+  }
+  throw new Error("Livreur introuvable. Créez un compte rôle Livreur dans Équipe.");
+}
+
 export async function assignDriver(client: Client, id: ID, driverId: ID): Promise<void> {
   const who = await actor(client);
-  const driver = await client.query("select full_name from delivery_drivers where id = $1", [driverId]);
+  const driver = await resolveDriver(client, driverId);
   const current = await client.query("select status, reference, customer_name from orders where id = $1", [id]);
-  if (!current.rows[0]) return;
+  if (!current.rows[0]) throw new Error("Commande introuvable.");
   const status = current.rows[0].status === "livree" ? "livree" : "assignee";
-  await client.query("update orders set driver_id = $2, status = $3 where id = $1", [id, driverId, status]);
+  await client.query("update orders set driver_id = $2, status = $3 where id = $1", [id, driver.id, status]);
   await client.query(
     `insert into order_events (id, order_id, status, note, user_name, created_at)
      values ($1,$2,$3,$4,$5, now())`,
-    [nextId("evt"), id, status, `Assignée à ${driver.rows[0]?.full_name ?? "livreur"}`, who.fullName],
+    [nextId("evt"), id, status, `Assignée à ${driver.fullName}`, who.fullName],
   );
   await audit(client, "Assignation livreur", "Order", id);
   await pingManagers(client, {
     title: `Livreur assigné · ${current.rows[0].reference}`,
-    message: `${driver.rows[0]?.full_name ?? "Livreur"} · ${current.rows[0].customer_name}`,
+    message: `${driver.fullName} · ${current.rows[0].customer_name}`,
     href: "/commandes",
   });
 }
@@ -803,6 +832,25 @@ export async function updateUser(client: Client, id: ID, patch: Partial<User>): 
     await client.query("delete from user_permissions where user_id = $1", [id]);
     for (const perm of patch.extraPermissions) {
       await client.query("insert into user_permissions (user_id, permission) values ($1,$2)", [id, perm]);
+    }
+  }
+  const role = String(patch.role ?? row.role);
+  if (role === "LIVREUR") {
+    const existing = await client.query("select id from delivery_drivers where user_id = $1", [id]);
+    const fullName = String(patch.fullName ?? row.full_name);
+    const phone = String(patch.phone ?? row.phone ?? "");
+    if (existing.rows[0]) {
+      await client.query("update delivery_drivers set full_name = $2, phone = $3, active = true where user_id = $1", [
+        id,
+        fullName,
+        phone,
+      ]);
+    } else {
+      await client.query(
+        `insert into delivery_drivers (id, user_id, full_name, phone, vehicle, active, can_sell)
+         values ($1,$2,$3,$4,'Moto',true,false)`,
+        [nextId("drv"), id, fullName, phone],
+      );
     }
   }
   await audit(client, "Modification utilisateur", "User", id);

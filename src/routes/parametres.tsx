@@ -89,7 +89,7 @@ function SettingsPage() {
         </TabsContent>
         <TabsContent value="postes" className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Un poste = une boutique, un entrepôt ou une caisse mobile. Chaque vente POS et chaque clôture de caisse y sont rattachées. Le gérant crée les boutiques ; le caissier encaisse sur le poste choisi en haut.
+            Une boutique (poste) est le magasin, l'entrepôt ou la caisse mobile. Créez-la ici, rattachez chaque membre dans Équipe, puis choisissez-la en haut de l'écran pour encaisser. Les ventes et clôtures de caisse y sont rattachées.
           </p>
           {can("settings.manage") && (
             <div className="grid gap-2 rounded-md border p-3 sm:grid-cols-4">
@@ -117,7 +117,7 @@ function SettingsPage() {
               </Button>
             </div>
           )}
-          <div className="rounded-md border">
+          <div className="overflow-x-auto rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>

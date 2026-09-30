@@ -156,27 +156,37 @@ export function AppShell({ children }: { children: ReactNode }) {
       </Sheet>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-20 flex h-14 items-center gap-2 border-b bg-background/95 px-3 backdrop-blur sm:px-4">
-          <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setOpen(true)} aria-label="Menu">
+        <header className="sticky top-0 z-20 border-b bg-background/95 backdrop-blur">
+          <div className="flex min-h-14 items-center gap-2 px-3 py-2 sm:px-4">
+          <Button variant="ghost" size="icon" className="shrink-0 lg:hidden" onClick={() => setOpen(true)} aria-label="Menu">
             <Menu className="h-5 w-5" />
           </Button>
-          {postes.length > 0 && can("pos.use") ? (
-            <Select value={posteId || postes[0]!.id} onValueChange={setPosteId}>
-              <SelectTrigger className="h-9 max-w-[55%] text-xs sm:max-w-xs" aria-label="Poste de vente">
-                <SelectValue placeholder="Choisir un poste" />
-              </SelectTrigger>
-              <SelectContent>
-                {postes.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : can("pos.use") ? (
-            <span className="truncate text-xs text-muted-foreground">Aucun poste — créez une boutique</span>
-          ) : null}
-          <div className="flex-1" />
+          {postes.length > 0 ? (
+            <div className="min-w-0 flex-1 sm:max-w-xs">
+              <label className="mb-0.5 block truncate text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                Boutique / caisse
+              </label>
+              <Select value={posteId || postes[0]!.id} onValueChange={setPosteId}>
+                <SelectTrigger className="h-9 w-full min-w-0 text-xs" aria-label="Boutique ou point de vente">
+                  <SelectValue placeholder="Choisir une boutique" />
+                </SelectTrigger>
+                <SelectContent>
+                  {postes.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name} · {p.type}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : can("settings.manage") ? (
+            <Link to="/parametres" className="min-w-0 flex-1 truncate text-xs text-muted-foreground underline">
+              Créer une boutique dans Paramètres
+            </Link>
+          ) : (
+            <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">Aucune boutique</span>
+          )}
+          <div className="ml-auto flex shrink-0 items-center gap-1">
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="ghost" size="icon" className="relative" aria-label="Notifications">
@@ -224,6 +234,8 @@ export function AppShell({ children }: { children: ReactNode }) {
               <LogOut className="h-4 w-4" />
             </Button>
           </div>
+          </div>
+          </div>
         </header>
         <main className="min-w-0 flex-1 p-3 sm:p-6">{children}</main>
       </div>
@@ -237,12 +249,12 @@ export function AppShell({ children }: { children: ReactNode }) {
               key={n.to}
               to={n.to}
               className={cn(
-                "flex min-h-12 flex-col items-center justify-center gap-0.5 text-[10px] font-medium",
+                "flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 px-0.5 text-center text-[10px] font-medium leading-tight",
                 active ? "text-primary" : "text-muted-foreground",
               )}
             >
-              <Icon className="h-5 w-5" />
-              {n.label}
+              <Icon className="h-5 w-5 shrink-0" />
+              <span className="w-full truncate">{n.label}</span>
             </Link>
           );
         })}

@@ -52,7 +52,7 @@ function ReportsPage() {
         <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-40" />
         <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-40" />
       </div>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="CA période" value={money(revenue)} accent />
         <StatCard label="Ventes POS" value={num(salesR.length)} />
         <StatCard label="Commandes" value={num(ordersR.length)} hint={`${delivered.length} livrées`} />
