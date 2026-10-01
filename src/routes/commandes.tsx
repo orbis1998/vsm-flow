@@ -385,6 +385,7 @@ function NewOrderDialog({
   const [productId, setProductId] = useState("");
   const [variantId, setVariantId] = useState("");
   const [driverId, setDriverId] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const available = products.filter(productInStock);
   const selectedProduct = products.find((p) => p.id === productId);
@@ -414,8 +415,13 @@ function NewOrderDialog({
   };
 
   const submit = async () => {
+    if (saving) return;
     if (lines.length === 0) {
       toast.error("Ajoutez au moins un produit en stock");
+      return;
+    }
+    if (!communeId || !zoneId) {
+      toast.error("Choisissez une commune et un quartier");
       return;
     }
     const items = [];
@@ -432,11 +438,16 @@ function NewOrderDialog({
         productId: p.id,
         variantId: variant.id,
         productName: label && label !== "Standard" ? `${p.name} (${label})` : p.name,
-        quantity: l.qty,
+        quantity: Math.max(1, Math.round(l.qty)),
         unitPrice: p.promoPrice ?? p.salePrice,
         discount: 0,
       });
     }
+    if (items.length === 0) {
+      toast.error("Ajoutez au moins un produit en stock");
+      return;
+    }
+    setSaving(true);
     try {
       const order = await ordersService.create({
         ...(customerId ? { customerId } : {}),
@@ -462,6 +473,8 @@ function NewOrderDialog({
       if (order?.id) onCreated(order.id);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Enregistrement impossible");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -512,14 +525,14 @@ function NewOrderDialog({
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <Label>Commune</Label>
-              <Select value={communeId} onValueChange={(v) => { setCommuneId(v); setZoneId(zonesOf(v)[0]?.id ?? ""); }}>
+              <Select value={communeId || undefined} onValueChange={(v) => { setCommuneId(v); setZoneId(zonesOf(v)[0]?.id ?? ""); }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>{communes.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div>
               <Label>Quartier</Label>
-              <Select value={zoneId} onValueChange={setZoneId}>
+              <Select value={zoneId || undefined} onValueChange={setZoneId}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>{zonesOf(communeId).map((z) => <SelectItem key={z.id} value={z.id}>{z.name}</SelectItem>)}</SelectContent>
               </Select>
@@ -602,7 +615,11 @@ function NewOrderDialog({
             <div className="flex justify-between gap-2"><span>Livraison (CDF, hors CA)</span><span className="num shrink-0">{moneyCdf(fee)}</span></div>
           </div>
         </div>
-        <DialogFooter><Button onClick={submit}>Enregistrer</Button></DialogFooter>
+        <DialogFooter>
+          <Button onClick={submit} disabled={saving}>
+            {saving ? "Enregistrement…" : "Enregistrer"}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

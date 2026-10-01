@@ -14,11 +14,21 @@ export async function insertNotification(
     href?: string;
   },
 ): Promise<void> {
-  await client.query(
-    `insert into notifications (id, title, message, level, read, user_id, href, created_at)
-     values ($1,$2,$3,$4,false,$5,$6, now())`,
-    [nextId("ntf"), input.title, input.message, input.level ?? "info", input.userId, input.href ?? "/commandes"],
-  );
+  const id = nextId("ntf");
+  const href = input.href ?? "/commandes";
+  try {
+    await client.query(
+      `insert into notifications (id, title, message, level, read, user_id, href, created_at)
+       values ($1,$2,$3,$4,false,$5,$6, now())`,
+      [id, input.title, input.message, input.level ?? "info", input.userId, href],
+    );
+  } catch {
+    await client.query(
+      `insert into notifications (id, title, message, level, read, user_id, created_at)
+       values ($1,$2,$3,$4,false,$5, now())`,
+      [id, input.title, input.message, input.level ?? "info", input.userId],
+    );
+  }
 }
 
 export async function notifyRoles(
@@ -26,13 +36,25 @@ export async function notifyRoles(
   roles: string[],
   payload: { title: string; message: string; level?: AppNotification["level"]; href?: string },
 ): Promise<string[]> {
-  const res = await client.query(
-    `select id from users where status = 'actif' and role = any($1::text[])`,
-    [roles],
-  );
+  let res;
+  try {
+    res = await client.query(
+      `select id from users where status = 'actif' and role = any($1::role_code[])`,
+      [roles],
+    );
+  } catch {
+    res = await client.query(
+      `select id from users where status = 'actif' and role::text = any($1::text[])`,
+      [roles],
+    );
+  }
   const ids = res.rows.map((r) => String(r.id));
   for (const userId of ids) {
-    await insertNotification(client, { ...payload, userId });
+    try {
+      await insertNotification(client, { ...payload, userId });
+    } catch {
+      // continuer les autres destinataires
+    }
   }
   return ids;
 }

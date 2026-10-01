@@ -2,13 +2,17 @@ import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { APP_STATE_KEY, EMPTY_APP_STATE, type AppState } from "@/lib/app-state";
 import { getAppStateFn } from "@/fn/app";
+import { LogoMark } from "@/components/brand/LogoMark";
 
 export function useAppQuery() {
   return useQuery({
     queryKey: APP_STATE_KEY,
     queryFn: () => getAppStateFn(),
-    staleTime: 60_000,
+    staleTime: 5 * 60_000,
+    gcTime: 30 * 60_000,
     refetchInterval: 90_000,
+    refetchOnWindowFocus: false,
+    placeholderData: (previous) => previous,
     retry: 2,
   });
 }
@@ -19,27 +23,26 @@ export function useAppState<T>(selector: (s: AppState) => T): T {
 }
 
 export function AppDataGate({ children }: { children: ReactNode }) {
-  const { isPending, isError, error } = useAppQuery();
+  const { isPending, isError, error, data } = useAppQuery();
 
-  if (isPending) {
+  if (isPending && !data) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background px-4">
+      <div className="flex min-h-dvh items-center justify-center bg-background px-4">
         <div className="text-center">
-          <div className="mx-auto mb-3 h-8 w-8 animate-pulse rounded-sm bg-primary" />
-          <p className="text-sm font-medium text-foreground">Chargement de Business Suite…</p>
-          <p className="mt-1 text-xs text-muted-foreground">Connexion à la base de données</p>
+          <LogoMark className="logo-pulse mx-auto mb-4 h-12 w-12 text-primary" />
+          <p className="text-sm font-medium text-foreground">Chargement…</p>
         </div>
       </div>
     );
   }
 
-  if (isError) {
+  if (isError && !data) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background px-4">
         <div className="max-w-md text-center">
           <h1 className="text-lg font-semibold text-foreground">Impossible de charger les données</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            {error instanceof Error ? error.message : "Erreur de connexion à Postgres."}
+            {error instanceof Error ? error.message : "Erreur de connexion."}
           </p>
           <button
             type="button"

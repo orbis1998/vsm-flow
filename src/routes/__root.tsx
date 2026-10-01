@@ -15,7 +15,9 @@ import { SessionProvider } from "@/hooks/useSession";
 import { AppShell } from "@/components/layout/AppShell";
 import { AppDataGate } from "@/lib/app-store";
 import { loadSession } from "@/lib/session";
+import { bindQueryClient } from "@/lib/query-client";
 import { APP_NAME } from "@/lib/brand";
+import { LogoMark } from "@/components/brand/LogoMark";
 import { Toaster } from "@/components/ui/sonner";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -120,15 +122,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootShell({ children }: { children: ReactNode }) {
   useEffect(() => {
-    if (!import.meta.env.PROD) {
-      navigator.serviceWorker?.getRegistrations().then((regs) => {
-        for (const reg of regs) void reg.unregister();
-      });
-      return;
-    }
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/sw.js").catch(() => undefined);
-    }
+    if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;
+    navigator.serviceWorker.register("/sw.js").catch(() => undefined);
   }, []);
   return (
     <html lang="fr">
@@ -157,8 +152,8 @@ function SessionGate({ children }: { children: ReactNode }) {
 
   if (!allowed) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <p className="text-sm text-muted-foreground">Redirection…</p>
+      <div className="flex min-h-dvh items-center justify-center bg-background">
+        <LogoMark className="logo-pulse h-12 w-12 text-primary" />
       </div>
     );
   }
@@ -168,6 +163,7 @@ function SessionGate({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  bindQueryClient(queryClient);
   const path = useRouterState({ select: (s) => s.location.pathname });
   const isLogin = path === "/login";
 

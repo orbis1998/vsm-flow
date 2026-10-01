@@ -75,23 +75,11 @@ async function adjustVariantStock(
 }
 
 async function pingManagers(
-  client: Client,
+  _client: Client,
   payload: { title: string; message: string; level?: "info" | "alerte" | "critique"; href?: string },
 ): Promise<void> {
-  try {
-    await client.query("savepoint ping_mgr");
-    const { notifyManagers } = await import("./notify");
-    const { sendWebPush } = await import("./push");
-    const userIds = await notifyManagers(client, payload);
-    await sendWebPush(client, userIds, { title: payload.title, body: payload.message, href: payload.href });
-    await client.query("release savepoint ping_mgr");
-  } catch {
-    try {
-      await client.query("rollback to savepoint ping_mgr");
-    } catch {
-      // hors transaction ou savepoint absent
-    }
-  }
+  const { queueManagerPing } = await import("./db");
+  queueManagerPing(payload);
 }
 
 const DELIVERY_STATUSES = new Set(["assignee", "en_livraison", "livree", "echec", "retour"]);
@@ -308,6 +296,19 @@ export type OrderCreateInput = {
 export async function createOrder(client: Client, input: OrderCreateInput): Promise<Order> {
   const who = await actor(client);
   if (!input.items.length) throw new Error("Ajoutez au moins un article.");
+  if (!input.communeId || !input.zoneId) throw new Error("Choisissez une commune et un quartier.");
+  const commune = await client.query("select id from communes where id = $1", [input.communeId]);
+  if (!commune.rows[0]) throw new Error("Commune introuvable.");
+  const zone = await client.query(
+    "select id from delivery_zones where id = $1 and commune_id = $2",
+    [input.zoneId, input.communeId],
+  );
+  if (!zone.rows[0]) throw new Error("Quartier introuvable pour cette commune.");
+  let customerId: string | null = input.customerId || null;
+  if (customerId) {
+    const found = await client.query("select id from customers where id = $1", [customerId]);
+    if (!found.rows[0]) customerId = null;
+  }
   for (const it of input.items) {
     if (!it.variantId) throw new Error(`Stock indisponible pour ${it.productName}`);
     const stock = await client.query("select stock from product_variants where id = $1", [it.variantId]);
@@ -316,41 +317,45 @@ export async function createOrder(client: Client, input: OrderCreateInput): Prom
       throw new Error(`${it.productName} : stock insuffisant (${available} restant).`);
     }
   }
-  const count = await client.query("select count(*)::int as n from orders");
-  const n = Number(count.rows[0]?.n ?? 0);
   const id = nextId("ord");
   const createdAt = nowIso();
-  const items: OrderItem[] = input.items.map((it, i) => ({ ...it, id: nextId(`oit${i}`) }));
+  const items: OrderItem[] = input.items.map((it, i) => ({
+    ...it,
+    id: nextId(`oit${i}`),
+    quantity: Math.max(1, Math.round(Number(it.quantity) || 0)),
+    unitPrice: Number(it.unitPrice) || 0,
+    discount: Number(it.discount) || 0,
+  }));
   const productsTotal = Math.round(items.reduce((s, it) => s + it.unitPrice * it.quantity - it.discount, 0) * 100) / 100;
   const totalToCollect = productsTotal;
-  const reference = `CMD-${new Date().getFullYear()}-${1000 + n + 1}`;
+  const reference = `CMD-${new Date().getFullYear()}-${id.replace(/\W/g, "").slice(-8).toUpperCase()}`;
   const evtId = nextId("evt");
-  const customerName = input.customerName.trim() || "Client";
+  const customerName = (input.customerName ?? "").trim() || "Client";
   const assigned = input.driverId ? await resolveDriver(client, input.driverId) : null;
   const status: OrderStatus = assigned ? "assignee" : "nouvelle";
   const createdNote = assigned ? `Commande enregistrée · ${assigned.fullName}` : "Commande enregistrée";
+  const deliveryFee = Number(input.deliveryFee) || 0;
 
   await client.query(
     `insert into orders (
       id, reference, customer_id, customer_name, phone, commune_id, zone_id, address_detail, landmark,
       products_total, delivery_fee, total_to_collect, payment_state, notes, status, received_usd, received_cdf, created_at, driver_id, poste_id
-    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'non_paye',$13,$14,0,0,$15,$16,$17)`,
+    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'non_paye',$13,$14,0,0,now(),$15,$16)`,
     [
       id,
       reference,
-      input.customerId || null,
+      customerId,
       customerName,
-      input.phone,
+      input.phone || "",
       input.communeId,
       input.zoneId,
-      input.addressDetail,
-      input.landmark,
+      input.addressDetail || "",
+      input.landmark || "",
       productsTotal,
-      input.deliveryFee,
+      deliveryFee,
       totalToCollect,
-      input.notes,
+      input.notes || "",
       status,
-      createdAt,
       assigned?.id ?? null,
       input.posteId || null,
     ],
@@ -368,6 +373,11 @@ export async function createOrder(client: Client, input: OrderCreateInput): Prom
     [evtId, id, status, createdNote, who.fullName, createdAt],
   );
   await audit(client, "Création commande", "Order", reference);
+  await pingManagers(client, {
+    title: `Nouvelle commande ${reference}`,
+    message: `${customerName}${assigned ? ` · ${assigned.fullName}` : ""}`,
+    href: "/commandes",
+  });
   return {
     id,
     reference,
@@ -379,7 +389,7 @@ export async function createOrder(client: Client, input: OrderCreateInput): Prom
     landmark: input.landmark,
     items,
     productsTotal,
-    deliveryFee: input.deliveryFee,
+    deliveryFee,
     totalToCollect,
     paymentState: "non_paye",
     notes: input.notes,
@@ -388,7 +398,7 @@ export async function createOrder(client: Client, input: OrderCreateInput): Prom
     receivedCdf: 0,
     createdAt,
     history: [{ id: evtId, status, note: createdNote, userName: who.fullName, createdAt }],
-    ...(input.customerId ? { customerId: input.customerId } : {}),
+    ...(customerId ? { customerId } : {}),
     ...(assigned ? { driverId: assigned.id } : {}),
     ...(input.posteId ? { posteId: input.posteId } : {}),
   };

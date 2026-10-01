@@ -85,14 +85,23 @@ export const getAppStateFn = createServerFn({ method: "GET" }).handler(async () 
   return loadAppState();
 });
 
-function unwrapMutation(raw: unknown): AppMutation {
-  if (raw && typeof raw === "object" && "op" in raw && typeof (raw as { op: unknown }).op === "string") {
-    return raw as AppMutation;
+function unwrapMutation(raw: unknown, depth = 0): AppMutation {
+  if (depth > 8) throw new Error("Requête d'enregistrement invalide.");
+  if (!raw || typeof raw !== "object") throw new Error("Requête d'enregistrement invalide.");
+  const obj = raw as Record<string, unknown>;
+  if (typeof obj.op === "string") {
+    const nested = obj.data;
+    if (
+      nested &&
+      typeof nested === "object" &&
+      obj.input === undefined &&
+      "input" in (nested as object)
+    ) {
+      return { ...obj, ...(nested as object) } as AppMutation;
+    }
+    return obj as AppMutation;
   }
-  if (raw && typeof raw === "object" && "data" in raw) {
-    const inner = (raw as { data: unknown }).data;
-    if (inner && typeof inner === "object" && "op" in inner) return inner as AppMutation;
-  }
+  if ("data" in obj) return unwrapMutation(obj.data, depth + 1);
   throw new Error("Requête d'enregistrement invalide.");
 }
 

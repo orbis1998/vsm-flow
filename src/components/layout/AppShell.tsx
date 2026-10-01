@@ -19,6 +19,7 @@ import {
   Wallet,
   ClipboardList,
   Bike,
+  Loader2,
 } from "lucide-react";
 import { useSession } from "@/hooks/useSession";
 import { usePushNotifications } from "@/hooks/usePush";
@@ -103,10 +104,11 @@ function Nav({ onNavigate }: { onNavigate?: () => void }) {
 
 function Brand() {
   const company = useAppState((s) => s.company);
+  const navigating = useRouterState({ select: (s) => s.isLoading });
   const subtitle = company.name && company.name !== APP_NAME ? company.name : "Commerce · Stock · Livraison";
   return (
     <div className="flex items-center gap-2.5 border-b border-sidebar-border px-5 py-4">
-      <LogoMark className="h-8 w-8 shrink-0 text-primary" />
+      <LogoMark className={cn("h-8 w-8 shrink-0 text-primary", navigating && "logo-pulse")} />
       <div className="min-w-0 leading-tight">
         <div className="truncate text-[13px] font-semibold tracking-tight text-sidebar-foreground">{APP_NAME}</div>
         <div className="truncate text-[11px] text-sidebar-foreground/55">{subtitle}</div>
@@ -123,7 +125,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   const users = useAppState((s) => s.users);
   const notifications = useAppState((s) => s.notifications);
   const path = useRouterState({ select: (s) => s.location.pathname });
-  usePushNotifications(user.id);
+  const navigating = useRouterState({ select: (s) => s.isLoading });
+  const push = usePushNotifications(user.id);
+  const pageBusy = navigating;
 
   const mine = useMemo(
     () => notifications.filter((n) => !n.userId || n.userId === user.id),
@@ -165,11 +169,15 @@ export function AppShell({ children }: { children: ReactNode }) {
       </Sheet>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-20 border-b bg-background/95 backdrop-blur">
+        <header className="relative sticky top-0 z-20 border-b bg-background/95 backdrop-blur">
+          <div className={pageBusy ? "page-progress is-on" : "page-progress"} aria-hidden />
           <div className="flex min-h-14 items-center gap-2 px-3 py-2 sm:px-4">
           <Button variant="ghost" size="icon" className="shrink-0 lg:hidden" onClick={() => setOpen(true)} aria-label="Menu">
             <Menu className="h-5 w-5" />
           </Button>
+          {pageBusy && (
+            <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary lg:hidden" aria-hidden />
+          )}
           {isGlobalRole(role) ? (
             <div className="min-w-0 flex-1" />
           ) : user.posteId && postes.find((p) => p.id === user.posteId) ? (
@@ -191,6 +199,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">Aucune boutique rattachée</span>
           )}
           <div className="ml-auto flex shrink-0 items-center gap-1">
+          {pageBusy && (
+            <Loader2 className="hidden h-4 w-4 animate-spin text-primary lg:block" aria-hidden />
+          )}
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="ghost" size="icon" className="relative" aria-label="Notifications">
@@ -205,9 +216,25 @@ export function AppShell({ children }: { children: ReactNode }) {
             <PopoverContent align="end" className="w-80 p-0">
               <div className="flex items-center justify-between border-b px-3 py-2">
                 <span className="text-sm font-semibold">Notifications</span>
-                <button className="text-xs text-primary" onClick={() => notificationsService.markAllRead(user.id)}>
-                  Tout marquer lu
-                </button>
+                <div className="flex items-center gap-2">
+                  {!push.enabled && (
+                    <button
+                      type="button"
+                      className="text-xs text-primary"
+                      disabled={push.busy}
+                      onClick={() =>
+                        void push.enable().catch((error) =>
+                          toast.error(error instanceof Error ? error.message : "Alertes impossibles"),
+                        )
+                      }
+                    >
+                      {push.busy ? "…" : "Activer"}
+                    </button>
+                  )}
+                  <button className="text-xs text-primary" onClick={() => notificationsService.markAllRead(user.id)}>
+                    Tout lu
+                  </button>
+                </div>
               </div>
               <div className="max-h-80 overflow-auto">
                 {mine.length === 0 && <p className="p-3 text-sm text-muted-foreground">Aucune notification.</p>}
