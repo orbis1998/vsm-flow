@@ -22,7 +22,7 @@ import type {
 export const referenceNow = new Date("2026-09-25T17:30:00.000Z");
 
 async function mutate(payload: AppMutation) {
-  const result = await mutateAppFn({ data: payload });
+  const result = await mutateAppFn({ data: payload } as never);
   await refreshAppState();
   return result;
 }
@@ -85,6 +85,7 @@ export const ordersService = {
     deliveryFee: number;
     items: Array<Omit<OrderItem, "id">>;
     driverId?: ID;
+    posteId?: ID;
   }) {
     return mutate({ op: "order.create", input }) as Promise<Order>;
   },

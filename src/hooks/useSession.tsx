@@ -31,7 +31,6 @@ const GUEST: User = {
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const users = useAppState((s) => s.users);
-  const postes = useAppState((s) => s.postes);
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [userId, setUserId] = useState<string | null>(null);
@@ -60,13 +59,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [ready, userId, user, pathname, navigate]);
 
   useEffect(() => {
-    if (!ready || posteId) return;
-    const next = user?.posteId || postes[0]?.id;
-    if (next) {
-      setPosteId(next);
-      savePoste(next);
+    if (!ready || !user) return;
+    if (user.role === "ADMIN") {
+      if (posteId) setPosteId("");
+      return;
     }
-  }, [ready, user, postes, posteId]);
+    const assigned = user.posteId ?? "";
+    if (posteId !== assigned) {
+      setPosteId(assigned);
+      if (assigned) savePoste(assigned);
+    }
+  }, [ready, user, posteId]);
 
   const value = useMemo<SessionValue>(() => {
     const current = user ?? GUEST;

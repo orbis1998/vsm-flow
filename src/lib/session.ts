@@ -1,9 +1,7 @@
 const KEY = "business-suite.session";
 
 export function saveSession(userId: string, posteId?: string) {
-  const prev = loadSession();
-  const keep = prev?.userId === userId ? prev.posteId : "";
-  localStorage.setItem(KEY, JSON.stringify({ userId, posteId: posteId || keep || "" }));
+  localStorage.setItem(KEY, JSON.stringify({ userId, posteId: posteId || "" }));
 }
 
 export function loadSession(): { userId: string; posteId?: string } | null {

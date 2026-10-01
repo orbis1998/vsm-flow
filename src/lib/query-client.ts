@@ -10,5 +10,5 @@ export function bindQueryClient(qc: QueryClient) {
 export async function refreshAppState() {
   if (!bound) return;
   await bound.invalidateQueries({ queryKey: APP_STATE_KEY });
-  await bound.refetchQueries({ queryKey: APP_STATE_KEY });
+  await bound.refetchQueries({ queryKey: APP_STATE_KEY, type: "active" });
 }

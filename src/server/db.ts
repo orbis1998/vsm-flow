@@ -102,6 +102,8 @@ async function prepare(client: pg.PoolClient) {
   if (tagged.__vsmSchema) return;
   await client.query(`alter table products add column if not exists image_url text not null default ''`);
   await client.query(`alter table orders alter column customer_id drop not null`);
+  await client.query(`alter table orders add column if not exists poste_id text`);
+  await client.query(`update users set poste_id = null where role = 'ADMIN' and poste_id is not null`);
   await client.query(`
     insert into delivery_drivers (id, user_id, full_name, phone, vehicle, active, can_sell)
     select 'drv-' || substr(replace(id, '-', ''), 1, 16), id, full_name, coalesce(phone, ''), 'Moto', true, false
@@ -128,9 +130,15 @@ export async function withTxn<T>(fn: (client: pg.PoolClient) => Promise<T>): Pro
   const client = await grabClient();
   try {
     await prepare(client);
-    await client.query("begin");
+    let started = false;
+    try {
+      await client.query("begin");
+      started = true;
+    } catch {
+      started = false;
+    }
     const result = await fn(client);
-    await client.query("commit");
+    if (started) await client.query("commit");
     return result;
   } catch (error) {
     try {

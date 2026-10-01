@@ -89,6 +89,14 @@ export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
   annulee: "Annulée",
 };
 
+export const ORDER_PIPELINE: OrderStatus[] = ["nouvelle", "a_preparer", "prete", "assignee", "en_livraison", "livree"];
+
+export function nextOrderStatus(current: OrderStatus): OrderStatus | null {
+  const i = ORDER_PIPELINE.indexOf(current);
+  if (i < 0 || i >= ORDER_PIPELINE.length - 1) return null;
+  return ORDER_PIPELINE[i + 1]!;
+}
+
 export const ORDER_STATUS_ORDER: OrderStatus[] = [
   "nouvelle",
   "a_preparer",

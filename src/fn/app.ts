@@ -31,6 +31,7 @@ export type OrderCreateInput = {
   deliveryFee: number;
   items: Array<Omit<OrderItem, "id">>;
   driverId?: ID;
+  posteId?: ID;
 };
 
 export type SaleCreateInput = {
@@ -84,9 +85,21 @@ export const getAppStateFn = createServerFn({ method: "GET" }).handler(async () 
   return loadAppState();
 });
 
+function unwrapMutation(raw: unknown): AppMutation {
+  if (raw && typeof raw === "object" && "op" in raw && typeof (raw as { op: unknown }).op === "string") {
+    return raw as AppMutation;
+  }
+  if (raw && typeof raw === "object" && "data" in raw) {
+    const inner = (raw as { data: unknown }).data;
+    if (inner && typeof inner === "object" && "op" in inner) return inner as AppMutation;
+  }
+  throw new Error("Requête d'enregistrement invalide.");
+}
+
 export const mutateAppFn = createServerFn({ method: "POST", strict: false })
-  .validator((data: AppMutation) => data)
-  .handler(async ({ data }) => {
+  .validator((data: unknown) => data)
+  .handler(async (ctx) => {
+    const data = unwrapMutation(ctx.data);
     const { withTxn } = await import("@/server/db");
     const m = await import("@/server/mutations");
     return withTxn(async (client) => {
@@ -180,7 +193,7 @@ export const mutateAppFn = createServerFn({ method: "POST", strict: false })
           await m.replaceOrderItems(client, data.id, data.items);
           return null;
         default:
-          return null;
+          throw new Error("Opération inconnue.");
       }
     });
   });

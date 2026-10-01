@@ -20,6 +20,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Empty, Forbidden, OrderStatusBadge, PageHeader } from "@/components/common/ui-bits";
 import { AmountInput, toNumber } from "@/lib/amount";
+import { scopedOrders } from "@/lib/boutique";
 import type { Order, OrderItem, OrderStatus } from "@/types";
 
 export const Route = createFileRoute("/commandes")({
@@ -35,9 +36,11 @@ export const Route = createFileRoute("/commandes")({
 });
 
 function OrdersPage() {
-  const { can } = useSession();
-  const orders = useAppState((s) => s.orders);
+  const { can, role, posteId } = useSession();
+  const ordersAll = useAppState((s) => s.orders);
+  const users = useAppState((s) => s.users);
   const drivers = useAppState((s) => s.drivers);
+  const orders = scopedOrders(ordersAll, users, drivers, role, posteId);
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<string>("all");
   const [selected, setSelected] = useState<string | null>(null);
@@ -270,8 +273,12 @@ function OrderSheet({ order, onClose }: { order: Order | null; onClose: () => vo
                     <Select
                       value={order.status}
                       onValueChange={async (v) => {
-                        await ordersService.updateStatus(order.id, v as OrderStatus);
-                        toast.success("Statut mis à jour");
+                        try {
+                          await ordersService.updateStatus(order.id, v as OrderStatus);
+                          toast.success("Statut mis à jour");
+                        } catch (error) {
+                          toast.error(error instanceof Error ? error.message : "Mise à jour impossible");
+                        }
                       }}
                     >
                       <SelectTrigger><SelectValue /></SelectTrigger>
@@ -359,6 +366,7 @@ function NewOrderDialog({
   onOpenChange: (o: boolean) => void;
   onCreated: (id: string) => void;
 }) {
+  const { role, posteId } = useSession();
   const customers = useAppState((s) => s.customers);
   const products = useAppState((s) => s.products);
   const communes = useAppState((s) => s.communes);
@@ -442,6 +450,7 @@ function NewOrderDialog({
         deliveryFee: fee,
         items,
         ...(driverId ? { driverId } : {}),
+        ...(role !== "ADMIN" && posteId ? { posteId } : {}),
       });
       toast.success(driverId ? "Commande créée et assignée" : "Commande créée");
       setLines([]);

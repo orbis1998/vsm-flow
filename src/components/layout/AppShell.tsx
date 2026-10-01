@@ -24,6 +24,7 @@ import { useSession } from "@/hooks/useSession";
 import { usePushNotifications } from "@/hooks/usePush";
 import { useAppState } from "@/lib/app-store";
 import { ROLES } from "@/lib/roles";
+import { POSTE_TYPE_LABEL, isGlobalRole, teamLine } from "@/lib/boutique";
 import { APP_NAME } from "@/lib/brand";
 import { dateTime, initials } from "@/lib/format";
 import { notificationsService } from "@/services";
@@ -31,7 +32,6 @@ import { LogoMark } from "@/components/brand/LogoMark";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import type { Permission, RoleCode } from "@/types";
 
@@ -117,9 +117,10 @@ function Brand() {
 
 export function AppShell({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
-  const { user, role, posteId, setPosteId, logout, can } = useSession();
+  const { user, role, logout, can } = useSession();
   const navigate = useNavigate();
   const postes = useAppState((s) => s.postes);
+  const users = useAppState((s) => s.users);
   const notifications = useAppState((s) => s.notifications);
   const path = useRouterState({ select: (s) => s.location.pathname });
   usePushNotifications(user.id);
@@ -169,30 +170,25 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Button variant="ghost" size="icon" className="shrink-0 lg:hidden" onClick={() => setOpen(true)} aria-label="Menu">
             <Menu className="h-5 w-5" />
           </Button>
-          {postes.length > 0 ? (
-            <div className="min-w-0 flex-1 sm:max-w-xs">
-              <label className="mb-0.5 block truncate text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                Boutique / caisse
-              </label>
-              <Select value={posteId || postes[0]!.id} onValueChange={setPosteId}>
-                <SelectTrigger className="h-9 w-full min-w-0 text-xs" aria-label="Boutique ou point de vente">
-                  <SelectValue placeholder="Choisir une boutique" />
-                </SelectTrigger>
-                <SelectContent>
-                  {postes.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name} · {p.type}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          {isGlobalRole(role) ? (
+            <div className="min-w-0 flex-1" />
+          ) : user.posteId && postes.find((p) => p.id === user.posteId) ? (
+            <div className="min-w-0 flex-1 overflow-hidden pr-2">
+              <p className="truncate text-sm font-medium leading-tight">
+                {postes.find((p) => p.id === user.posteId)!.name}
+              </p>
+              <p className="hidden truncate text-[11px] leading-tight text-muted-foreground sm:block">
+                {POSTE_TYPE_LABEL[postes.find((p) => p.id === user.posteId)!.type]}
+                {" · "}
+                {teamLine(users, user.posteId)}
+              </p>
             </div>
           ) : can("settings.manage") ? (
             <Link to="/parametres" className="min-w-0 flex-1 truncate text-xs text-muted-foreground underline">
-              Créer une boutique dans Paramètres
+              Créer une boutique dans Paramètres, puis rattacher l'équipe
             </Link>
           ) : (
-            <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">Aucune boutique</span>
+            <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">Aucune boutique rattachée</span>
           )}
           <div className="ml-auto flex shrink-0 items-center gap-1">
           <Popover>

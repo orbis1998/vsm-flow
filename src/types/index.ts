@@ -293,6 +293,7 @@ export interface Order {
   notes: string;
   status: OrderStatus;
   driverId?: ID | undefined;
+  posteId?: ID | undefined;
   receivedUsd: number;
   receivedCdf: number;
   createdAt: ISODate;

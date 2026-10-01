@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Forbidden, PageHeader } from "@/components/common/ui-bits";
+import { BoutiqueCard } from "@/components/common/BoutiqueCard";
 import { Pencil, Trash2 } from "lucide-react";
 import type { Poste } from "@/types";
 
@@ -89,7 +90,7 @@ function SettingsPage() {
         </TabsContent>
         <TabsContent value="postes" className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Une boutique (poste) est le magasin, l'entrepôt ou la caisse mobile. Créez-la ici, rattachez chaque membre dans Équipe, puis choisissez-la en haut de l'écran pour encaisser. Les ventes et clôtures de caisse y sont rattachées.
+            Une boutique est un point de vente : caisse, stock consultable, gérant, caissier et livreur. Créez-la ici, puis rattachez l'équipe dans Équipe. L'administrateur n'est lié à aucune boutique — son tableau de bord reste global.
           </p>
           {can("settings.manage") && (
             <div className="grid gap-2 rounded-md border p-3 sm:grid-cols-4">
@@ -117,67 +118,51 @@ function SettingsPage() {
               </Button>
             </div>
           )}
-          <div className="overflow-x-auto rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Poste</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Adresse</TableHead>
-                  {can("settings.manage") && <TableHead className="text-right">Actions</TableHead>}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {postes.map((p) => (
-                  <TableRow key={p.id}>
-                    <TableCell className="font-medium">{p.name}</TableCell>
-                    <TableCell>{p.type}</TableCell>
-                    <TableCell>{p.address}</TableCell>
-                    {can("settings.manage") && (
-                      <TableCell className="text-right">
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          aria-label="Renommer"
-                          onClick={async () => {
-                            const name = window.prompt("Nouveau nom", p.name);
-                            if (!name) return;
-                            await settingsService.updatePoste(p.id, { name });
-                            toast.success("Boutique mise à jour");
-                          }}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          aria-label="Supprimer"
-                          onClick={async () => {
-                            if (!confirm(`Supprimer « ${p.name} » ?`)) return;
-                            try {
-                              await settingsService.removePoste(p.id);
-                              toast.success("Boutique supprimée");
-                            } catch (error) {
-                              toast.error(error instanceof Error ? error.message : "Suppression impossible");
-                            }
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    )}
-                  </TableRow>
-                ))}
-                {postes.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-sm text-muted-foreground">
-                      Aucune boutique pour l'instant.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
+          {postes.length > 0 && (
+            <div className="grid gap-3 md:grid-cols-2">
+              {postes.map((p) => (
+                <div key={p.id} className="relative">
+                  <BoutiqueCard poste={p} />
+                  {can("settings.manage") && (
+                    <div className="absolute right-2 top-2 flex gap-1">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        aria-label="Renommer"
+                        onClick={async () => {
+                          const name = window.prompt("Nouveau nom", p.name);
+                          if (!name) return;
+                          await settingsService.updatePoste(p.id, { name });
+                          toast.success("Boutique mise à jour");
+                        }}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        aria-label="Supprimer"
+                        onClick={async () => {
+                          if (!confirm(`Supprimer « ${p.name} » ?`)) return;
+                          try {
+                            await settingsService.removePoste(p.id);
+                            toast.success("Boutique supprimée");
+                          } catch (error) {
+                            toast.error(error instanceof Error ? error.message : "Suppression impossible");
+                          }
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          {postes.length === 0 && (
+            <p className="text-sm text-muted-foreground">Aucune boutique pour l'instant.</p>
+          )}
         </TabsContent>
         <TabsContent value="livraison">
           <p className="mb-3 text-sm text-muted-foreground">

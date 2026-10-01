@@ -82,6 +82,7 @@ function UsersPage() {
       toast.error("Mot de passe requis pour un nouveau compte");
       return;
     }
+    const assignedPoste = form.role === "ADMIN" ? "" : form.posteId;
     if (editing) {
       await usersService.update(editing.id, {
         fullName: form.fullName,
@@ -90,7 +91,7 @@ function UsersPage() {
         badge: form.badge,
         role: form.role,
         status: form.status,
-        posteId: form.posteId || undefined,
+        posteId: assignedPoste,
       });
       toast.success("Membre mis à jour");
     } else {
@@ -104,7 +105,7 @@ function UsersPage() {
         extraPermissions: [],
         password: form.password,
         vehicle: form.vehicle,
-        posteId: form.posteId || undefined,
+        posteId: assignedPoste || undefined,
       });
       toast.success("Compte créé");
     }
@@ -238,7 +239,12 @@ function UsersPage() {
             <div><Label>Téléphone</Label><Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
             <div>
               <Label>Rôle</Label>
-              <Select value={form.role} onValueChange={(v) => setForm({ ...form, role: v as RoleCode })}>
+              <Select
+                value={form.role}
+                onValueChange={(v) =>
+                  setForm({ ...form, role: v as RoleCode, posteId: v === "ADMIN" ? "" : form.posteId })
+                }
+              >
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>{ROLE_LIST.map((r) => <SelectItem key={r.code} value={r.code}>{r.label}</SelectItem>)}</SelectContent>
               </Select>
@@ -260,6 +266,7 @@ function UsersPage() {
                 <Input value={form.vehicle} onChange={(e) => setForm({ ...form, vehicle: e.target.value })} />
               </div>
             )}
+            {form.role !== "ADMIN" && (
             <div>
               <Label>Boutique rattachée</Label>
               <Select value={form.posteId || "none"} onValueChange={(v) => setForm({ ...form, posteId: v === "none" ? "" : v })}>
@@ -272,9 +279,10 @@ function UsersPage() {
                 </SelectContent>
               </Select>
               <p className="mt-1 text-xs text-muted-foreground">
-                Visible sur l'espace du membre (caisse et courses). Les ventes POS s'enregistrent sur la boutique choisie en haut de l'écran.
+                Le gérant, le caissier et le livreur de cette boutique voient sa caisse, son stock et ses courses. L'admin n'est rattaché à aucune boutique : il voit tout.
               </p>
             </div>
+            )}
           </div>
           <DialogFooter><Button onClick={save}>Enregistrer</Button></DialogFooter>
         </DialogContent>

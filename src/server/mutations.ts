@@ -79,13 +79,48 @@ async function pingManagers(
   payload: { title: string; message: string; level?: "info" | "alerte" | "critique"; href?: string },
 ): Promise<void> {
   try {
+    await client.query("savepoint ping_mgr");
     const { notifyManagers } = await import("./notify");
     const { sendWebPush } = await import("./push");
     const userIds = await notifyManagers(client, payload);
     await sendWebPush(client, userIds, { title: payload.title, body: payload.message, href: payload.href });
+    await client.query("release savepoint ping_mgr");
   } catch {
-    // notification must never block the métier
+    try {
+      await client.query("rollback to savepoint ping_mgr");
+    } catch {
+      // hors transaction ou savepoint absent
+    }
   }
+}
+
+const DELIVERY_STATUSES = new Set(["assignee", "en_livraison", "livree", "echec", "retour"]);
+
+async function syncDeliveryRow(
+  client: Client,
+  orderId: ID,
+  driverId: string | null | undefined,
+  status: OrderStatus,
+  collected: number,
+): Promise<void> {
+  if (!driverId || !DELIVERY_STATUSES.has(status)) return;
+  const closed = ["livree", "echec", "retour"].includes(status);
+  const existing = await client.query(
+    "select id from deliveries where order_id = $1 order by created_at desc limit 1",
+    [orderId],
+  );
+  if (existing.rows[0]) {
+    await client.query(
+      "update deliveries set driver_id = $2, status = $3, collected_amount = $4, closed_at = $5 where id = $1",
+      [existing.rows[0].id, driverId, status, collected, closed ? new Date().toISOString() : null],
+    );
+    return;
+  }
+  await client.query(
+    `insert into deliveries (id, order_id, driver_id, status, collected_amount, created_at, closed_at)
+     values ($1,$2,$3,$4,$5, now(), $6)`,
+    [nextId("dlv"), orderId, driverId, status, collected, closed ? new Date().toISOString() : null],
+  );
 }
 
 /* --------------------------------- Produits -------------------------------- */
@@ -267,6 +302,7 @@ export type OrderCreateInput = {
   deliveryFee: number;
   items: Array<Omit<OrderItem, "id">>;
   driverId?: ID;
+  posteId?: ID;
 };
 
 export async function createOrder(client: Client, input: OrderCreateInput): Promise<Order> {
@@ -297,8 +333,8 @@ export async function createOrder(client: Client, input: OrderCreateInput): Prom
   await client.query(
     `insert into orders (
       id, reference, customer_id, customer_name, phone, commune_id, zone_id, address_detail, landmark,
-      products_total, delivery_fee, total_to_collect, payment_state, notes, status, received_usd, received_cdf, created_at, driver_id
-    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'non_paye',$13,$14,0,0,$15,$16)`,
+      products_total, delivery_fee, total_to_collect, payment_state, notes, status, received_usd, received_cdf, created_at, driver_id, poste_id
+    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'non_paye',$13,$14,0,0,$15,$16,$17)`,
     [
       id,
       reference,
@@ -316,6 +352,7 @@ export async function createOrder(client: Client, input: OrderCreateInput): Prom
       status,
       createdAt,
       assigned?.id ?? null,
+      input.posteId || null,
     ],
   );
   for (const it of items) {
@@ -353,6 +390,7 @@ export async function createOrder(client: Client, input: OrderCreateInput): Prom
     history: [{ id: evtId, status, note: createdNote, userName: who.fullName, createdAt }],
     ...(input.customerId ? { customerId: input.customerId } : {}),
     ...(assigned ? { driverId: assigned.id } : {}),
+    ...(input.posteId ? { posteId: input.posteId } : {}),
   };
 }
 
@@ -380,30 +418,47 @@ export async function updateOrderStatus(
     [nextId("evt"), id, status, note, who.fullName],
   );
   if (status === "livree" && order.status !== "livree") {
-    const items = await client.query("select * from order_items where order_id = $1", [id]);
-    for (const it of items.rows) {
-      await adjustVariantStock(
-        client,
-        it.variant_id ? String(it.variant_id) : undefined,
-        String(it.product_id),
-        Number(it.quantity),
-        "sortie",
-        who.id,
-        `Livraison ${order.reference}`,
-        String(order.reference),
+    try {
+      await client.query("savepoint after_status");
+      const items = await client.query("select * from order_items where order_id = $1", [id]);
+      for (const it of items.rows) {
+        await adjustVariantStock(
+          client,
+          it.variant_id ? String(it.variant_id) : undefined,
+          String(it.product_id),
+          Number(it.quantity),
+          "sortie",
+          who.id,
+          `Livraison ${order.reference}`,
+          String(order.reference),
+        );
+      }
+      await client.query(
+        `insert into financial_transactions (id, reference, type, label, amount, direction, created_at)
+         values ($1,$2,'encaissement',$3,$4,'entree', now())`,
+        [
+          nextId("trx"),
+          `${order.reference}-${nextId("enc")}`,
+          `Encaissement livraison — ${order.customer_name}`,
+          Number(order.products_total) || 0,
+        ],
       );
+      await client.query("release savepoint after_status");
+    } catch {
+      try {
+        await client.query("rollback to savepoint after_status");
+      } catch {
+        // ignore
+      }
     }
-    await client.query(
-      `insert into financial_transactions (id, reference, type, label, amount, direction, created_at)
-       values ($1,$2,'encaissement',$3,$4,'entree', now())`,
-      [
-        nextId("trx"),
-        `${order.reference}-${nextId("enc")}`,
-        `Encaissement livraison — ${order.customer_name}`,
-        Number(order.products_total) || 0,
-      ],
-    );
   }
+  await syncDeliveryRow(
+    client,
+    id,
+    order.driver_id ? String(order.driver_id) : null,
+    status,
+    Number(order.products_total) || 0,
+  );
   await audit(client, "Changement de statut commande", "Order", id);
   const labels: Record<string, string> = {
     en_livraison: "en route",
@@ -796,7 +851,7 @@ export async function createUser(client: Client, input: UserCreateInput): Promis
       hashPassword(input.password),
       input.role,
       input.status,
-      input.posteId ?? null,
+      input.role === "ADMIN" ? null : (input.posteId || null),
       createdAt,
     ],
   );
@@ -835,7 +890,7 @@ export async function updateUser(client: Client, id: ID, patch: Partial<User>): 
       patch.badge ?? row.badge,
       patch.role ?? row.role,
       patch.status ?? row.status,
-      patch.posteId !== undefined ? (patch.posteId ?? null) : row.poste_id,
+      String(patch.role ?? row.role) === "ADMIN" ? null : patch.posteId !== undefined ? patch.posteId || null : row.poste_id,
       patch.lastLoginAt !== undefined ? (patch.lastLoginAt ?? null) : row.last_login_at,
     ],
   );

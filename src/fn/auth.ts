@@ -42,6 +42,6 @@ export const loginFn = createServerFn({ method: "POST", strict: false })
       role: String(row.role),
       status: String(row.status),
     };
-    if (row.poste_id) user.posteId = String(row.poste_id);
+    if (row.poste_id && String(row.role) !== "ADMIN") user.posteId = String(row.poste_id);
     return user;
   });

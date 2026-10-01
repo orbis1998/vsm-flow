@@ -54,7 +54,7 @@ function LoginPage() {
     setBusy(true);
     try {
       const user = await loginFn({ data: { login, password } });
-      saveSession(user.id, user.posteId);
+      saveSession(user.id, user.role === "ADMIN" ? undefined : user.posteId);
       toast.success(`Bienvenue ${user.fullName}`);
       await queryClient.ensureQueryData({
         queryKey: APP_STATE_KEY,

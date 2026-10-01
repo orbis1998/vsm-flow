@@ -14,7 +14,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { BoutiqueCard } from "@/components/common/BoutiqueCard";
 import { Forbidden, PageHeader } from "@/components/common/ui-bits";
+import { isGlobalRole } from "@/lib/boutique";
 import type { Product, ProductVariant } from "@/types";
 
 export const Route = createFileRoute("/pos")({
@@ -32,7 +35,7 @@ export const Route = createFileRoute("/pos")({
 interface Line { product: Product; variantId: string; qty: number }
 
 function PosPage() {
-  const { can, posteId } = useSession();
+  const { can, posteId, role } = useSession();
   const products = useAppState((s) => s.products);
   const postes = useAppState((s) => s.postes);
   const [q, setQ] = useState("");
@@ -43,7 +46,11 @@ function PosPage() {
   const [receivedCdf, setReceivedCdf] = useState("");
   const [customer, setCustomer] = useState("Client comptoir");
   const [pick, setPick] = useState<Product | null>(null);
+  const [adminPosteId, setAdminPosteId] = useState(postes[0]?.id ?? "");
   if (!can("pos.use")) return <Forbidden />;
+
+  const tillId = isGlobalRole(role) ? adminPosteId : posteId;
+  const till = postes.find((p) => p.id === tillId);
 
   const price = (p: Product) => p.promoPrice ?? p.salePrice;
   const pushLine = (p: Product, v: ProductVariant) => {
@@ -76,31 +83,62 @@ function PosPage() {
   const total = Math.max(0, subtotal - toNumber(discount));
   const checkout = async () => {
     if (!cart.length) return;
-    if (!posteId) { toast.error("Choisissez un poste de vente"); return; }
-    const sale = await salesService.create({
-      posteId,
-      customerName: customer,
-      discount: toNumber(discount),
-      receivedUsd: toNumber(receivedUsd),
-      receivedCdf: toNumber(receivedCdf),
-      items: cart.map((l) => ({ productId: l.product.id, variantId: l.variantId, productName: l.product.name, quantity: l.qty, unitPrice: price(l.product), discount: 0 })),
-    });
-    toast.success(`Vente ${sale.reference}`);
-    setCart([]);
-    setDiscount("");
-    setReceivedUsd("");
-    setReceivedCdf("");
+    if (!tillId) {
+      toast.error(
+        isGlobalRole(role)
+          ? "Choisissez la boutique pour enregistrer la vente"
+          : "Votre compte n'est rattaché à aucune boutique. Demandez à l'admin de vous assigner.",
+      );
+      return;
+    }
+    try {
+      const sale = await salesService.create({
+        posteId: tillId,
+        customerName: customer,
+        discount: toNumber(discount),
+        receivedUsd: toNumber(receivedUsd),
+        receivedCdf: toNumber(receivedCdf),
+        items: cart.map((l) => ({ productId: l.product.id, variantId: l.variantId, productName: l.product.name, quantity: l.qty, unitPrice: price(l.product), discount: 0 })),
+      });
+      toast.success(`Vente ${sale.reference}`);
+      setCart([]);
+      setDiscount("");
+      setReceivedUsd("");
+      setReceivedCdf("");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Encaissement impossible");
+    }
   };
 
   return (
     <div>
       <PageHeader
         title="Point de vente"
-        subtitle={postes.find((p) => p.id === posteId)?.name ?? "Choisissez une boutique en haut de l'écran"}
+        subtitle={till ? till.name : "Boutique requise pour encaisser"}
       />
-      {!posteId && (
+      {isGlobalRole(role) && (
+        <div className="mb-4 max-w-sm">
+          <Select value={tillId || "none"} onValueChange={(v) => setAdminPosteId(v === "none" ? "" : v)}>
+            <SelectTrigger>
+              <SelectValue placeholder="Boutique à encaisser" />
+            </SelectTrigger>
+            <SelectContent>
+              {postes.length === 0 && <SelectItem value="none">Aucune boutique</SelectItem>}
+              {postes.map((p) => (
+                <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="mt-1 text-xs text-muted-foreground">
+            L'administrateur n'est pas rattaché à une boutique. Choisissez ici le point de vente de cette caisse.
+          </p>
+        </div>
+      )}
+      {till ? (
+        <BoutiqueCard poste={till} className="mb-4" />
+      ) : (
         <p className="mb-3 text-sm text-muted-foreground">
-          Aucune boutique sélectionnée. Créez-en une dans Paramètres, puis choisissez-la dans « Boutique / caisse ».
+          Aucune boutique rattachée. L'admin crée la boutique dans Paramètres, puis assigne gérant, caissier et livreur dans Équipe.
         </p>
       )}
       <div className="grid gap-4 lg:grid-cols-[1fr_380px]">

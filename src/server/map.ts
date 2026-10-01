@@ -256,6 +256,8 @@ export function mapOrder(
   if (driverId) order.driverId = driverId;
   const customerId = optStr(row.customer_id);
   if (customerId) order.customerId = customerId;
+  const posteId = optStr(row.poste_id);
+  if (posteId) order.posteId = posteId;
   return order;
 }
 
