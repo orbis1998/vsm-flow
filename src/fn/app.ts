@@ -52,6 +52,10 @@ export type AppMutation =
       op: "stock.movement";
       input: { productId: ID; variantId?: ID; quantity: number; type: StockMovementType; note: string };
     }
+  | {
+      op: "stock.driverRestock";
+      input: { driverId: ID; productId: ID; variantId?: ID; quantity: number };
+    }
   | { op: "order.create"; input: OrderCreateInput }
   | { op: "order.status"; id: ID; status: OrderStatus; note?: string; receivedUsd?: number; receivedCdf?: number }
   | { op: "order.assign"; id: ID; driverId: ID }
@@ -123,6 +127,9 @@ export const mutateAppFn = createServerFn({ method: "POST", strict: false })
           return null;
         case "stock.movement":
           await m.addMovement(client, data.input);
+          return null;
+        case "stock.driverRestock":
+          await m.restockDriver(client, data.input);
           return null;
         case "order.create":
           return m.createOrder(client, data.input);

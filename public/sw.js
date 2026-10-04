@@ -23,8 +23,14 @@ self.addEventListener("push", (event) => {
   event.waitUntil(
     self.registration.showNotification(data.title, {
       body: data.body,
-      icon: "/icon.svg",
-      badge: "/icon.svg",
+      icon: "/icon-192.png",
+      badge: "/icon-96.png",
+      vibrate: [200, 100, 200, 100, 200],
+      requireInteraction: true,
+      renotify: true,
+      silent: false,
+      tag: data.tag || data.href || "vsm-flow",
+      timestamp: Date.now(),
       data: { href: data.href || "/commandes" },
     }),
   );

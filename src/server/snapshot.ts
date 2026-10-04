@@ -11,6 +11,7 @@ import {
   mapCustomer,
   mapDelivery,
   mapDriver,
+  mapDriverStock,
   mapExpense,
   mapMovement,
   mapNotification,
@@ -67,6 +68,7 @@ export async function loadAppState(): Promise<AppState> {
           where i.sale_id in (select id from sales order by created_at desc limit 300)
         ),
         'movements', (select coalesce(jsonb_agg(t), '[]'::jsonb) from (select * from stock_movements order by created_at desc limit 200) t),
+        'driverStock', (select coalesce(jsonb_agg(t), '[]'::jsonb) from driver_stock t),
         'purchaseOrders', (select coalesce(jsonb_agg(t), '[]'::jsonb) from (select * from purchase_orders order by created_at desc limit 100) t),
         'poItems', (select coalesce(jsonb_agg(t), '[]'::jsonb) from purchase_items t),
         'expenses', (select coalesce(jsonb_agg(t), '[]'::jsonb) from (select * from expenses order by created_at desc limit 200) t),
@@ -134,6 +136,7 @@ export async function loadAppState(): Promise<AppState> {
       deliveries: rows(snap.deliveries).map(mapDelivery),
       sales: rows(snap.sales).map((row) => mapSale(row, (itemsBySale.get(String(row.id)) ?? []).map(mapSaleItem))),
       movements: rows(snap.movements).map(mapMovement),
+      driverStock: rows(snap.driverStock).map(mapDriverStock),
       purchaseOrders: rows(snap.purchaseOrders).map((row) =>
         mapPurchaseOrder(row, (itemsByPo.get(String(row.id)) ?? []).map(mapPurchaseItem)),
       ),

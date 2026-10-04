@@ -276,6 +276,100 @@ export async function addMovement(
   await audit(client, "Mouvement de stock", "StockMovement", reference);
 }
 
+export async function restockDriver(
+  client: Client,
+  input: { driverId: ID; productId: ID; variantId?: ID; quantity: number },
+): Promise<void> {
+  const qty = Math.max(1, Math.round(Number(input.quantity) || 0));
+  if (qty < 1) throw new Error("Quantité invalide.");
+  const who = await actor(client);
+  const driver = await resolveDriver(client, input.driverId);
+  const product = await client.query("select id, name from products where id = $1", [input.productId]);
+  if (!product.rows[0]) throw new Error("Article introuvable.");
+  const variants = await client.query(
+    "select id, stock, sku from product_variants where product_id = $1 order by sku",
+    [input.productId],
+  );
+  const target =
+    (input.variantId ? variants.rows.find((v) => String(v.id) === input.variantId) : variants.rows[0]) ?? null;
+  if (!target) throw new Error("Aucune variante en stock pour cet article.");
+  const available = Number(target.stock ?? 0);
+  if (available < qty) {
+    throw new Error(`Stock boutique insuffisant (${available} restant).`);
+  }
+
+  const userRow = await client.query("select poste_id from users where id = $1", [driver.userId]);
+  const posteId = userRow.rows[0]?.poste_id ? String(userRow.rows[0].poste_id) : null;
+  let posteName = "sans boutique";
+  if (posteId) {
+    const poste = await client.query("select name from postes where id = $1", [posteId]);
+    if (poste.rows[0]) posteName = String(poste.rows[0].name);
+  }
+
+  await addMovement(client, {
+    productId: input.productId,
+    variantId: String(target.id),
+    quantity: -qty,
+    type: "transfert",
+    note: `Dotation ${driver.fullName} · ${posteName}`,
+  });
+
+  const existing = await client.query(
+    `select id from driver_stock
+     where driver_id = $1 and product_id = $2
+       and coalesce(variant_id, '') = coalesce($3, '')`,
+    [driver.id, input.productId, String(target.id)],
+  );
+  if (existing.rows[0]) {
+    await client.query(
+      "update driver_stock set quantity = quantity + $2, updated_at = now() where id = $1",
+      [existing.rows[0].id, qty],
+    );
+  } else {
+    await client.query(
+      `insert into driver_stock (id, driver_id, product_id, variant_id, quantity, updated_at)
+       values ($1,$2,$3,$4,$5, now())`,
+      [nextId("dst"), driver.id, input.productId, String(target.id), qty],
+    );
+  }
+  await audit(client, "Dotation stock livreur", "DriverStock", driver.id);
+  await pingUsers([driver.userId], {
+    title: "Stock reçu",
+    message: `${qty} × ${product.rows[0].name} · ${posteName}`,
+    href: "/stock",
+  });
+  await pingManagers(client, {
+    title: `Dotation ${driver.fullName}`,
+    message: `${qty} × ${product.rows[0].name} depuis ${posteName} · ${who.fullName}`,
+    href: "/stock",
+  });
+}
+
+async function consumeDriverStock(
+  client: Client,
+  driverId: string,
+  productId: string,
+  variantId: string | undefined,
+  quantity: number,
+): Promise<number> {
+  if (quantity <= 0) return 0;
+  const row = await client.query(
+    `select id, quantity from driver_stock
+     where driver_id = $1 and product_id = $2
+       and coalesce(variant_id, '') = coalesce($3, '')`,
+    [driverId, productId, variantId ?? ""],
+  );
+  if (!row.rows[0]) return quantity;
+  const have = Number(row.rows[0].quantity ?? 0);
+  const take = Math.min(have, quantity);
+  if (take <= 0) return quantity;
+  await client.query("update driver_stock set quantity = greatest(0, quantity - $2), updated_at = now() where id = $1", [
+    row.rows[0].id,
+    take,
+  ]);
+  return quantity - take;
+}
+
 /* -------------------------------- Commandes -------------------------------- */
 
 export type OrderCreateInput = {
@@ -432,16 +526,28 @@ export async function updateOrderStatus(
       await client.query("savepoint after_status");
       const items = await client.query("select * from order_items where order_id = $1", [id]);
       for (const it of items.rows) {
-        await adjustVariantStock(
-          client,
-          it.variant_id ? String(it.variant_id) : undefined,
-          String(it.product_id),
-          Number(it.quantity),
-          "sortie",
-          who.id,
-          `Livraison ${order.reference}`,
-          String(order.reference),
-        );
+        const qty = Number(it.quantity);
+        const leftover = order.driver_id
+          ? await consumeDriverStock(
+              client,
+              String(order.driver_id),
+              String(it.product_id),
+              it.variant_id ? String(it.variant_id) : undefined,
+              qty,
+            )
+          : qty;
+        if (leftover > 0) {
+          await adjustVariantStock(
+            client,
+            it.variant_id ? String(it.variant_id) : undefined,
+            String(it.product_id),
+            leftover,
+            "sortie",
+            who.id,
+            `Livraison ${order.reference}`,
+            String(order.reference),
+          );
+        }
       }
       await client.query(
         `insert into financial_transactions (id, reference, type, label, amount, direction, created_at)

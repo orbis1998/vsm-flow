@@ -27,10 +27,12 @@ export async function sendWebPush(
     `select id, endpoint, p256dh, auth from push_subscriptions where user_id = any($1::text[])`,
     [userIds],
   );
+  const href = payload.href ?? "/commandes";
   const body = JSON.stringify({
     title: payload.title,
     body: payload.body,
-    href: payload.href ?? "/commandes",
+    href,
+    tag: href,
   });
   for (const row of subs.rows) {
     try {
@@ -40,6 +42,7 @@ export async function sendWebPush(
           keys: { p256dh: String(row.p256dh), auth: String(row.auth) },
         },
         body,
+        { urgency: "high", TTL: 60 * 60 * 12 },
       );
     } catch (error) {
       const status = typeof error === "object" && error && "statusCode" in error ? Number(error.statusCode) : 0;

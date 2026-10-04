@@ -143,7 +143,7 @@ function ProductsPage() {
         await productsService.create(payload);
         toast.success(`${Math.max(variants.length, 1)} variante(s) créée(s)`);
       }
-      setOpen(false);
+    setOpen(false);
       reset();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Enregistrement impossible");

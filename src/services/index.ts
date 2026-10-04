@@ -62,6 +62,9 @@ export const stockService = {
   }) {
     await mutate({ op: "stock.movement", input });
   },
+  async restockDriver(input: { driverId: ID; productId: ID; variantId?: ID; quantity: number }) {
+    await mutate({ op: "stock.driverRestock", input });
+  },
 };
 
 /* -------------------------------- Commandes -------------------------------- */
@@ -98,8 +101,8 @@ export const ordersService = {
     await mutate({
       op: "order.status",
       id,
-      status,
-      note,
+                  status,
+                  note,
       ...(received?.receivedUsd != null ? { receivedUsd: received.receivedUsd } : {}),
       ...(received?.receivedCdf != null ? { receivedCdf: received.receivedCdf } : {}),
     });

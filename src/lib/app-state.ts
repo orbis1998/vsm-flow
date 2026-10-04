@@ -10,6 +10,7 @@ import type {
   Delivery,
   DeliveryDriver,
   DeliveryZone,
+  DriverStockLine,
   Expense,
   FinancialTransaction,
   Order,
@@ -36,6 +37,7 @@ export interface AppState {
   deliveries: Delivery[];
   sales: Sale[];
   movements: StockMovement[];
+  driverStock: DriverStockLine[];
   purchaseOrders: PurchaseOrder[];
   expenses: Expense[];
   transactions: FinancialTransaction[];
@@ -70,6 +72,7 @@ export const EMPTY_APP_STATE: AppState = {
   deliveries: [],
   sales: [],
   movements: [],
+  driverStock: [],
   purchaseOrders: [],
   expenses: [],
   transactions: [],

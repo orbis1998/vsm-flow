@@ -168,6 +168,15 @@ export interface StockMovement {
   createdAt: ISODate;
 }
 
+export interface DriverStockLine {
+  id: ID;
+  driverId: ID;
+  productId: ID;
+  variantId?: ID | undefined;
+  quantity: number;
+  updatedAt: ISODate;
+}
+
 /* --------------------------------- Partenaires ------------------------------ */
 
 export interface Supplier {

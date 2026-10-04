@@ -10,6 +10,7 @@ import type {
   Delivery,
   DeliveryDriver,
   DeliveryZone,
+  DriverStockLine,
   Expense,
   FinancialTransaction,
   Order,
@@ -336,6 +337,19 @@ export function mapSale(row: Record<string, unknown>, items: SaleItem[]): Sale {
   const customerId = optStr(row.customer_id);
   if (customerId) sale.customerId = customerId;
   return sale;
+}
+
+export function mapDriverStock(row: Record<string, unknown>): DriverStockLine {
+  const line: DriverStockLine = {
+    id: String(row.id),
+    driverId: String(row.driver_id),
+    productId: String(row.product_id),
+    quantity: Number(row.quantity ?? 0),
+    updatedAt: iso(row.updated_at),
+  };
+  const variantId = optStr(row.variant_id);
+  if (variantId) line.variantId = variantId;
+  return line;
 }
 
 export function mapMovement(row: Record<string, unknown>): StockMovement {

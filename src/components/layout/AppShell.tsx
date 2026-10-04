@@ -59,7 +59,7 @@ const NAV: Array<{
 ];
 
 const MOBILE_BY_ROLE: Partial<Record<RoleCode, string[]>> = {
-  LIVREUR: ["/livreur", "/pos"],
+  LIVREUR: ["/livreur", "/stock", "/clients"],
   CAISSIER: ["/", "/pos", "/clients"],
   MAGASINIER: ["/", "/stock", "/produits"],
   COMPTABLE: ["/", "/finance", "/rapports"],
@@ -94,7 +94,7 @@ function Nav({ onNavigate }: { onNavigate?: () => void }) {
             )}
           >
             <Icon className="h-4 w-4 shrink-0" />
-            {n.label}
+            {role === "LIVREUR" && n.to === "/stock" ? "Mon stock" : n.label}
           </Link>
         );
       })}
@@ -292,7 +292,9 @@ export function AppShell({ children }: { children: ReactNode }) {
               )}
             >
               <Icon className="h-5 w-5 shrink-0" />
-              <span className="w-full truncate">{n.label}</span>
+              <span className="w-full truncate">
+                {role === "LIVREUR" && n.to === "/stock" ? "Mon stock" : n.label}
+              </span>
             </Link>
           );
         })}
