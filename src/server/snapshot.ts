@@ -68,7 +68,12 @@ export async function loadAppState(): Promise<AppState> {
           where i.sale_id in (select id from sales order by created_at desc limit 300)
         ),
         'movements', (select coalesce(jsonb_agg(t), '[]'::jsonb) from (select * from stock_movements order by created_at desc limit 200) t),
-        'driverStock', (select coalesce(jsonb_agg(t), '[]'::jsonb) from driver_stock t),
+        'driverStock', (
+          select case
+            when to_regclass('public.driver_stock') is null then '[]'::jsonb
+            else (select coalesce(jsonb_agg(t), '[]'::jsonb) from driver_stock t)
+          end
+        ),
         'purchaseOrders', (select coalesce(jsonb_agg(t), '[]'::jsonb) from (select * from purchase_orders order by created_at desc limit 100) t),
         'poItems', (select coalesce(jsonb_agg(t), '[]'::jsonb) from purchase_items t),
         'expenses', (select coalesce(jsonb_agg(t), '[]'::jsonb) from (select * from expenses order by created_at desc limit 200) t),

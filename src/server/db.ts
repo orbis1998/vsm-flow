@@ -98,13 +98,15 @@ async function grabClient(): Promise<pg.PoolClient> {
   throw last;
 }
 
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 6;
 
 export type ManagerPing = {
   title: string;
   message: string;
   level?: "info" | "alerte" | "critique";
   href?: string;
+  /** Si renseigné, n'écrit et n'envoie qu'à ces comptes (ex. le livreur assigné). */
+  userIds?: string[];
 };
 
 const pingAls = new AsyncLocalStorage<{ pings: ManagerPing[] }>();
@@ -118,12 +120,14 @@ export function queueManagerPing(payload: ManagerPing) {
 async function flushPings(pings: ManagerPing[]) {
   if (!pings.length) return;
   try {
-    const { notifyManagers } = await import("./notify");
+    const { notifyManagers, notifyUsers } = await import("./notify");
     const { sendWebPush } = await import("./push");
     await withClient(async (client) => {
       for (const payload of pings) {
         try {
-          const userIds = await notifyManagers(client, payload);
+          const userIds = payload.userIds?.length
+            ? await notifyUsers(client, payload.userIds, payload)
+            : await notifyManagers(client, payload);
           if (userIds.length === 0) continue;
           await sendWebPush(client, userIds, {
             title: payload.title,
@@ -142,6 +146,11 @@ async function flushPings(pings: ManagerPing[]) {
 
 async function prepare(client: pg.PoolClient) {
   const tagged = client as pg.PoolClient & { __vsmSchema?: number };
+  try {
+    await ensureDriverStock(client);
+  } catch {
+    // la page doit quand même charger si la table n'est pas encore là
+  }
   if (tagged.__vsmSchema === SCHEMA_VERSION) return;
   await client.query(`alter table products add column if not exists image_url text not null default ''`);
   await client.query(`alter table orders alter column customer_id drop not null`);
@@ -165,7 +174,21 @@ async function prepare(client: pg.PoolClient) {
     where u.role = 'LIVREUR'
       and not exists (select 1 from delivery_drivers d where d.user_id = u.id)
   `);
+  await ensureDriverStock(client);
   tagged.__vsmSchema = SCHEMA_VERSION;
+}
+
+async function ensureDriverStock(client: pg.PoolClient) {
+  await client.query(`
+    create table if not exists driver_stock (
+      id text primary key,
+      driver_id text not null references delivery_drivers(id) on delete cascade,
+      product_id text not null references products(id) on delete cascade,
+      variant_id text references product_variants(id) on delete set null,
+      quantity integer not null default 0,
+      updated_at timestamptz not null default now()
+    )
+  `);
 }
 
 export function friendlyPgError(error: unknown): Error {

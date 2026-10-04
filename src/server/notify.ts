@@ -65,3 +65,21 @@ export async function notifyManagers(
 ): Promise<string[]> {
   return notifyRoles(client, ["ADMIN", "GERANT", "RESP_LOGISTIQUE"], payload);
 }
+
+export async function notifyUsers(
+  client: Client,
+  userIds: string[],
+  payload: { title: string; message: string; level?: AppNotification["level"]; href?: string },
+): Promise<string[]> {
+  const unique = [...new Set(userIds.filter(Boolean))];
+  const delivered: string[] = [];
+  for (const userId of unique) {
+    try {
+      await insertNotification(client, { ...payload, userId });
+      delivered.push(userId);
+    } catch {
+      // continuer les autres destinataires
+    }
+  }
+  return delivered;
+}
