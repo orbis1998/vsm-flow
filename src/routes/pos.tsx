@@ -15,7 +15,6 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { BoutiqueCard } from "@/components/common/BoutiqueCard";
 import { Forbidden, PageHeader } from "@/components/common/ui-bits";
 import { isGlobalRole } from "@/lib/boutique";
 import type { Product, ProductVariant } from "@/types";
@@ -134,9 +133,7 @@ function PosPage() {
           </p>
         </div>
       )}
-      {till ? (
-        <BoutiqueCard poste={till} className="mb-4" />
-      ) : (
+      {!till && (
         <p className="mb-3 text-sm text-muted-foreground">
           Aucune boutique rattachée. L'admin crée la boutique dans Paramètres, puis assigne gérant, caissier et livreur dans Équipe.
         </p>

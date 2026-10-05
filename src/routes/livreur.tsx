@@ -4,7 +4,6 @@ import { useAppState } from "@/lib/app-store";
 import { APP_NAME } from "@/lib/brand";
 import { useSession } from "@/hooks/useSession";
 import { usePushNotifications } from "@/hooks/usePush";
-import { BoutiqueCard } from "@/components/common/BoutiqueCard";
 import { RunCard } from "@/components/livreur/RunCard";
 import { Empty, Forbidden, PageHeader } from "@/components/common/ui-bits";
 import { Button } from "@/components/ui/button";
@@ -24,13 +23,11 @@ function DriverPage() {
   const { can, user } = useSession();
   const drivers = useAppState((s) => s.drivers);
   const orders = useAppState((s) => s.orders);
-  const postes = useAppState((s) => s.postes);
   const push = usePushNotifications(user.id);
   if (!can("driver.space") && !can("orders.assigned.view")) return <Forbidden />;
   const driver = drivers.find((d) => d.userId === user.id) ?? drivers.find((d) => d.fullName === user.fullName);
   const mine = orders.filter((o) => driver && o.driverId === driver.id && !["livree", "annulee"].includes(o.status));
   const done = orders.filter((o) => driver && o.driverId === driver.id && o.status === "livree");
-  const boutique = postes.find((p) => p.id === user.posteId);
 
   return (
     <div className="mx-auto max-w-lg pb-8">
@@ -56,13 +53,6 @@ function DriverPage() {
             {push.busy ? "Activation…" : "Activer les notifications"}
           </Button>
         </div>
-      )}
-      {boutique ? (
-        <BoutiqueCard poste={boutique} className="mb-4" />
-      ) : (
-        <p className="mb-4 text-sm text-muted-foreground">
-          Aucune boutique rattachée. L'admin assigne le livreur à une boutique dans Équipe.
-        </p>
       )}
       {!driver && (
         <p className="mb-4 text-sm text-muted-foreground">

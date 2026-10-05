@@ -178,7 +178,7 @@ async function prepare(client: pg.PoolClient) {
   tagged.__vsmSchema = SCHEMA_VERSION;
 }
 
-async function ensureDriverStock(client: pg.PoolClient) {
+export async function ensureDriverStock(client: pg.PoolClient) {
   await client.query(`
     create table if not exists driver_stock (
       id text primary key,
@@ -197,8 +197,8 @@ export function friendlyPgError(error: unknown): Error {
     if (e.constraint?.includes("customer")) {
       return new Error("Client introuvable. Laissez vide ou choisissez un client de la liste.");
     }
-    if (e.constraint?.includes("commune") || e.constraint?.includes("zone")) {
-      return new Error("Choisissez une commune et un quartier.");
+    if (e.constraint?.includes("driver") || e.constraint?.includes("product") || e.constraint?.includes("variant")) {
+      return new Error("Livreur, article ou variante introuvable. Réessayez.");
     }
     return new Error("Une référence est invalide (client, commune, quartier ou boutique).");
   }

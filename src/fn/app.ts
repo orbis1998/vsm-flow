@@ -128,9 +128,22 @@ export const mutateAppFn = createServerFn({ method: "POST", strict: false })
         case "stock.movement":
           await m.addMovement(client, data.input);
           return null;
-        case "stock.driverRestock":
-          await m.restockDriver(client, data.input);
+        case "stock.driverRestock": {
+          const raw = data as { input?: { driverId: ID; productId: ID; variantId?: ID; quantity: number } } & {
+            driverId?: ID;
+            productId?: ID;
+            variantId?: ID;
+            quantity?: number;
+          };
+          const input = raw.input ?? {
+            driverId: raw.driverId ?? "",
+            productId: raw.productId ?? "",
+            variantId: raw.variantId,
+            quantity: raw.quantity ?? 0,
+          };
+          await m.restockDriver(client, input);
           return null;
+        }
         case "order.create":
           return m.createOrder(client, data.input);
         case "order.status":

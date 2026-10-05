@@ -108,6 +108,7 @@ function StockPage() {
   const [dotProductId, setDotProductId] = useState("");
   const [dotVariantId, setDotVariantId] = useState("");
   const [dotQty, setDotQty] = useState(1);
+  const [dotBusy, setDotBusy] = useState(false);
 
   const driverPoste = useMemo(() => {
     const map = new Map<string, string>();
@@ -153,21 +154,20 @@ function StockPage() {
       toast.error("Livreur, article et quantité requis");
       return;
     }
-    if (dotProduct && dotProduct.variants.length > 1 && !dotVariantId) {
-      toast.error("Choisissez une variante");
-      return;
-    }
+    setDotBusy(true);
     try {
       await stockService.restockDriver({
         driverId,
         productId: dotProductId,
-        variantId: dotVariantId || dotProduct?.variants[0]?.id,
+        variantId: dotVariantId || undefined,
         quantity: dotQty,
       });
       toast.success("Stock remis au livreur");
       setDotQty(1);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Dotation impossible");
+    } finally {
+      setDotBusy(false);
     }
   };
 
@@ -310,8 +310,8 @@ function StockPage() {
                 <Label>Quantité</Label>
                 <Input type="number" min={1} value={dotQty} onChange={(e) => setDotQty(+e.target.value)} />
               </div>
-              <Button onClick={() => void restock()} className="w-fit">
-                Remettre le stock
+              <Button onClick={() => void restock()} className="w-fit" disabled={dotBusy}>
+                {dotBusy ? "Envoi…" : "Remettre le stock"}
               </Button>
             </div>
           )}

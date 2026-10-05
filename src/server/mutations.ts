@@ -281,21 +281,37 @@ export async function restockDriver(
   input: { driverId: ID; productId: ID; variantId?: ID; quantity: number },
 ): Promise<void> {
   const qty = Math.max(1, Math.round(Number(input.quantity) || 0));
+  if (!input.driverId) throw new Error("Choisissez un livreur.");
+  if (!input.productId) throw new Error("Choisissez un article.");
   if (qty < 1) throw new Error("Quantité invalide.");
+
+  try {
+    const { ensureDriverStock } = await import("./db");
+    await ensureDriverStock(client);
+  } catch {
+    // la table peut déjà exister
+  }
+
   const who = await actor(client);
   const driver = await resolveDriver(client, input.driverId);
   const product = await client.query("select id, name from products where id = $1", [input.productId]);
   if (!product.rows[0]) throw new Error("Article introuvable.");
+
   const variants = await client.query(
-    "select id, stock, sku from product_variants where product_id = $1 order by sku",
+    "select id, stock, sku from product_variants where product_id = $1 order by stock desc, sku",
     [input.productId],
   );
+  if (!variants.rows.length) {
+    throw new Error("Cet article n'a pas de variante. Ajoutez une taille ou un modèle dans Articles.");
+  }
+  const wanted = input.variantId ? String(input.variantId) : "";
   const target =
-    (input.variantId ? variants.rows.find((v) => String(v.id) === input.variantId) : variants.rows[0]) ?? null;
-  if (!target) throw new Error("Aucune variante en stock pour cet article.");
+    variants.rows.find((v) => wanted && String(v.id) === wanted) ??
+    variants.rows.find((v) => Number(v.stock ?? 0) >= qty) ??
+    variants.rows[0];
   const available = Number(target.stock ?? 0);
   if (available < qty) {
-    throw new Error(`Stock boutique insuffisant (${available} restant).`);
+    throw new Error(`${product.rows[0].name} : stock boutique insuffisant (${available} restant).`);
   }
 
   const userRow = await client.query("select poste_id from users where id = $1", [driver.userId]);
@@ -306,13 +322,28 @@ export async function restockDriver(
     if (poste.rows[0]) posteName = String(poste.rows[0].name);
   }
 
-  await addMovement(client, {
-    productId: input.productId,
-    variantId: String(target.id),
-    quantity: -qty,
-    type: "transfert",
-    note: `Dotation ${driver.fullName} · ${posteName}`,
-  });
+  const deducted = await client.query(
+    "update product_variants set stock = stock - $2 where id = $1 and stock >= $2 returning stock",
+    [target.id, qty],
+  );
+  if (!deducted.rows[0]) {
+    throw new Error(`${product.rows[0].name} : stock boutique insuffisant.`);
+  }
+
+  const reference = `DOT-${Math.floor(Math.random() * 9000) + 1000}`;
+  await client.query(
+    `insert into stock_movements (id, reference, product_id, variant_id, quantity, type, user_id, note, created_at)
+     values ($1,$2,$3,$4,$5,'sortie',$6,$7, now())`,
+    [
+      nextId("mvt"),
+      reference,
+      input.productId,
+      String(target.id),
+      -qty,
+      who.id,
+      `Dotation ${driver.fullName} · ${posteName}`,
+    ],
+  );
 
   const existing = await client.query(
     `select id from driver_stock
@@ -332,15 +363,11 @@ export async function restockDriver(
       [nextId("dst"), driver.id, input.productId, String(target.id), qty],
     );
   }
+
   await audit(client, "Dotation stock livreur", "DriverStock", driver.id);
   await pingUsers([driver.userId], {
     title: "Stock reçu",
     message: `${qty} × ${product.rows[0].name} · ${posteName}`,
-    href: "/stock",
-  });
-  await pingManagers(client, {
-    title: `Dotation ${driver.fullName}`,
-    message: `${qty} × ${product.rows[0].name} depuis ${posteName} · ${who.fullName}`,
     href: "/stock",
   });
 }

@@ -64,8 +64,8 @@ export const ROLES: Record<RoleCode, Role> = {
   LIVREUR: {
     code: "LIVREUR",
     label: "Livreur",
-    description: "Courses assignées, stock emporté et contacts clients.",
-    permissions: ["orders.assigned.view", "driver.space", "stock.view", "customers.view"],
+    description: "Courses assignées et stock emporté.",
+    permissions: ["orders.assigned.view", "driver.space", "stock.view"],
     enabled: true,
   },
   CAISSIER: {

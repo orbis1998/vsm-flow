@@ -25,7 +25,7 @@ import { useSession } from "@/hooks/useSession";
 import { usePushNotifications } from "@/hooks/usePush";
 import { useAppState } from "@/lib/app-store";
 import { ROLES } from "@/lib/roles";
-import { POSTE_TYPE_LABEL, isGlobalRole, teamLine } from "@/lib/boutique";
+import { isGlobalRole } from "@/lib/boutique";
 import { APP_NAME } from "@/lib/brand";
 import { dateTime, initials } from "@/lib/format";
 import { notificationsService } from "@/services";
@@ -59,7 +59,7 @@ const NAV: Array<{
 ];
 
 const MOBILE_BY_ROLE: Partial<Record<RoleCode, string[]>> = {
-  LIVREUR: ["/livreur", "/stock", "/clients"],
+  LIVREUR: ["/livreur", "/stock"],
   CAISSIER: ["/", "/pos", "/clients"],
   MAGASINIER: ["/", "/stock", "/produits"],
   COMPTABLE: ["/", "/finance", "/rapports"],
@@ -122,7 +122,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { user, role, logout, can } = useSession();
   const navigate = useNavigate();
   const postes = useAppState((s) => s.postes);
-  const users = useAppState((s) => s.users);
   const notifications = useAppState((s) => s.notifications);
   const path = useRouterState({ select: (s) => s.location.pathname });
   const navigating = useRouterState({ select: (s) => s.isLoading });
@@ -184,11 +183,6 @@ export function AppShell({ children }: { children: ReactNode }) {
             <div className="min-w-0 flex-1 overflow-hidden pr-2">
               <p className="truncate text-sm font-medium leading-tight">
                 {postes.find((p) => p.id === user.posteId)!.name}
-              </p>
-              <p className="hidden truncate text-[11px] leading-tight text-muted-foreground sm:block">
-                {POSTE_TYPE_LABEL[postes.find((p) => p.id === user.posteId)!.type]}
-                {" · "}
-                {teamLine(users, user.posteId)}
               </p>
             </div>
           ) : can("settings.manage") ? (
