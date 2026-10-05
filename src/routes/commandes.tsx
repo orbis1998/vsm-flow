@@ -5,7 +5,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { useAppState } from "@/lib/app-store";
 import { communeName, zoneName } from "@/lib/geo";
 import { pickAvailableVariant, productInStock, productStock } from "@/lib/catalog";
-import { dateTime, moneyCdf, moneyUsd, ORDER_STATUS_LABEL, ORDER_STATUS_ORDER } from "@/lib/format";
+import { dateTime, dueAtFromKinshasaTime, moneyCdf, moneyUsd, ORDER_STATUS_LABEL, ORDER_STATUS_ORDER, timeKinshasa } from "@/lib/format";
 import { APP_NAME } from "@/lib/brand";
 import { variantLabel } from "@/lib/variants";
 import { ordersService } from "@/services";
@@ -168,6 +168,10 @@ function OrderSheet({ order, onClose }: { order: Order | null; onClose: () => vo
                 <div className="text-muted-foreground">
                   {communeName(order.communeId)}, {zoneName(order.zoneId)} — {order.addressDetail}
                 </div>
+                {order.dueAt && (
+                  <div className="mt-1 font-medium">Heure : {timeKinshasa(order.dueAt)}</div>
+                )}
+                {order.notes ? <div className="mt-2 rounded-md bg-muted p-2">{order.notes}</div> : null}
                 {order.landmark && <div className="text-muted-foreground">Repère : {order.landmark}</div>}
               </div>
               <div className="rounded-md border">
@@ -381,6 +385,7 @@ function NewOrderDialog({
   const [address, setAddress] = useState("");
   const [landmark, setLandmark] = useState("");
   const [notes, setNotes] = useState("");
+  const [dueTime, setDueTime] = useState("");
   const [lines, setLines] = useState<Array<{ productId: string; variantId: string; qty: number }>>([]);
   const [productId, setProductId] = useState("");
   const [variantId, setVariantId] = useState("");
@@ -462,6 +467,7 @@ function NewOrderDialog({
         items,
         ...(driverId ? { driverId } : {}),
         ...(role !== "ADMIN" && posteId ? { posteId } : {}),
+        ...(dueAtFromKinshasaTime(dueTime) ? { dueAt: dueAtFromKinshasaTime(dueTime) } : {}),
       });
       toast.success(driverId ? "Commande créée et assignée" : "Commande créée");
       setLines([]);
@@ -469,6 +475,8 @@ function NewOrderDialog({
       setCustomerName("");
       setPhone("");
       setDriverId("");
+      setNotes("");
+      setDueTime("");
       onOpenChange(false);
       if (order?.id) onCreated(order.id);
     } catch (error) {
@@ -609,7 +617,16 @@ function NewOrderDialog({
               </Select>
             )}
           </div>
-          <div><Label>Notes</Label><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} /></div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <Label>Heure de livraison</Label>
+              <Input type="time" value={dueTime} onChange={(e) => setDueTime(e.target.value)} />
+            </div>
+            <div>
+              <Label>Notes pour le livreur</Label>
+              <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Appeler avant d'arriver…" />
+            </div>
+          </div>
           <div className="rounded-md bg-muted p-3 text-sm">
             <div className="flex justify-between gap-2"><span>Marchandise</span><span className="num shrink-0">{moneyUsd(total)}</span></div>
             <div className="flex justify-between gap-2"><span>Livraison (CDF, hors CA)</span><span className="num shrink-0">{moneyCdf(fee)}</span></div>

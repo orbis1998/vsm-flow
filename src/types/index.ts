@@ -303,6 +303,7 @@ export interface Order {
   status: OrderStatus;
   driverId?: ID | undefined;
   posteId?: ID | undefined;
+  dueAt?: ISODate | undefined;
   receivedUsd: number;
   receivedCdf: number;
   createdAt: ISODate;

@@ -259,6 +259,8 @@ export function mapOrder(
   if (customerId) order.customerId = customerId;
   const posteId = optStr(row.poste_id);
   if (posteId) order.posteId = posteId;
+  const dueAt = optIso(row.due_at);
+  if (dueAt) order.dueAt = dueAt;
   return order;
 }
 

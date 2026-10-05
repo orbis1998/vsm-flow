@@ -89,6 +89,7 @@ export const ordersService = {
     items: Array<Omit<OrderItem, "id">>;
     driverId?: ID;
     posteId?: ID;
+    dueAt?: string;
   }) {
     return mutate({ op: "order.create", input }) as Promise<Order>;
   },

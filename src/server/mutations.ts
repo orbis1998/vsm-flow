@@ -82,6 +82,21 @@ async function pingManagers(
   queueManagerPing(payload);
 }
 
+async function pingUsers(
+  userIds: Array<string | undefined | null>,
+  payload: { title: string; message: string; level?: "info" | "alerte" | "critique"; href?: string },
+): Promise<void> {
+  const ids = [...new Set(userIds.filter((id): id is string => Boolean(id)))];
+  if (!ids.length) return;
+  const { queueManagerPing } = await import("./db");
+  queueManagerPing({ ...payload, userIds: ids });
+}
+
+async function livreurUserIds(client: Client): Promise<string[]> {
+  const res = await client.query("select id from users where status = 'actif' and role = 'LIVREUR'");
+  return res.rows.map((r) => String(r.id));
+}
+
 const DELIVERY_STATUSES = new Set(["assignee", "en_livraison", "livree", "echec", "retour"]);
 
 async function syncDeliveryRow(
@@ -412,6 +427,7 @@ export type OrderCreateInput = {
   items: Array<Omit<OrderItem, "id">>;
   driverId?: ID;
   posteId?: ID;
+  dueAt?: string;
 };
 
 export async function createOrder(client: Client, input: OrderCreateInput): Promise<Order> {
@@ -460,8 +476,8 @@ export async function createOrder(client: Client, input: OrderCreateInput): Prom
   await client.query(
     `insert into orders (
       id, reference, customer_id, customer_name, phone, commune_id, zone_id, address_detail, landmark,
-      products_total, delivery_fee, total_to_collect, payment_state, notes, status, received_usd, received_cdf, created_at, driver_id, poste_id
-    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'non_paye',$13,$14,0,0,now(),$15,$16)`,
+      products_total, delivery_fee, total_to_collect, payment_state, notes, status, received_usd, received_cdf, created_at, driver_id, poste_id, due_at
+    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'non_paye',$13,$14,0,0,now(),$15,$16,$17)`,
     [
       id,
       reference,
@@ -479,6 +495,7 @@ export async function createOrder(client: Client, input: OrderCreateInput): Prom
       status,
       assigned?.id ?? null,
       input.posteId || null,
+      input.dueAt || null,
     ],
   );
   for (const it of items) {
@@ -494,11 +511,13 @@ export async function createOrder(client: Client, input: OrderCreateInput): Prom
     [evtId, id, status, createdNote, who.fullName, createdAt],
   );
   await audit(client, "Création commande", "Order", reference);
-  await pingManagers(client, {
+  const ping = {
     title: `Nouvelle commande ${reference}`,
     message: `${customerName}${assigned ? ` · ${assigned.fullName}` : ""}`,
-    href: "/commandes",
-  });
+  };
+  await pingManagers(client, { ...ping, href: "/commandes" });
+  const driverRecipients = assigned?.userId ? [assigned.userId] : await livreurUserIds(client);
+  await pingUsers(driverRecipients, { ...ping, href: "/livreur" });
   return {
     id,
     reference,
@@ -522,6 +541,7 @@ export async function createOrder(client: Client, input: OrderCreateInput): Prom
     ...(customerId ? { customerId } : {}),
     ...(assigned ? { driverId: assigned.id } : {}),
     ...(input.posteId ? { posteId: input.posteId } : {}),
+    ...(input.dueAt ? { dueAt: input.dueAt } : {}),
   };
 }
 
@@ -618,11 +638,26 @@ export async function updateOrderStatus(
   }
 }
 
-async function resolveDriver(client: Client, driverId: ID): Promise<{ id: string; fullName: string }> {
-  const byId = await client.query("select id, full_name from delivery_drivers where id = $1", [driverId]);
-  if (byId.rows[0]) return { id: String(byId.rows[0].id), fullName: String(byId.rows[0].full_name) };
-  const byUser = await client.query("select id, full_name from delivery_drivers where user_id = $1", [driverId]);
-  if (byUser.rows[0]) return { id: String(byUser.rows[0].id), fullName: String(byUser.rows[0].full_name) };
+async function resolveDriver(
+  client: Client,
+  driverId: ID,
+): Promise<{ id: string; fullName: string; userId: string }> {
+  const byId = await client.query("select id, full_name, user_id from delivery_drivers where id = $1", [driverId]);
+  if (byId.rows[0]) {
+    return {
+      id: String(byId.rows[0].id),
+      fullName: String(byId.rows[0].full_name),
+      userId: String(byId.rows[0].user_id),
+    };
+  }
+  const byUser = await client.query("select id, full_name, user_id from delivery_drivers where user_id = $1", [driverId]);
+  if (byUser.rows[0]) {
+    return {
+      id: String(byUser.rows[0].id),
+      fullName: String(byUser.rows[0].full_name),
+      userId: String(byUser.rows[0].user_id),
+    };
+  }
   const user = await client.query(
     "select id, full_name, coalesce(phone, '') as phone from users where id = $1 and role = 'LIVREUR'",
     [driverId],
@@ -634,8 +669,16 @@ async function resolveDriver(client: Client, driverId: ID): Promise<{ id: string
        on conflict (user_id) do update set full_name = excluded.full_name, phone = excluded.phone, active = true`,
       [nextId("drv"), user.rows[0].id, user.rows[0].full_name, user.rows[0].phone],
     );
-    const again = await client.query("select id, full_name from delivery_drivers where user_id = $1", [user.rows[0].id]);
-    if (again.rows[0]) return { id: String(again.rows[0].id), fullName: String(again.rows[0].full_name) };
+    const again = await client.query("select id, full_name, user_id from delivery_drivers where user_id = $1", [
+      user.rows[0].id,
+    ]);
+    if (again.rows[0]) {
+      return {
+        id: String(again.rows[0].id),
+        fullName: String(again.rows[0].full_name),
+        userId: String(again.rows[0].user_id),
+      };
+    }
   }
   throw new Error("Livreur introuvable. Créez un compte rôle Livreur dans Équipe.");
 }
@@ -653,10 +696,17 @@ export async function assignDriver(client: Client, id: ID, driverId: ID): Promis
     [nextId("evt"), id, status, `Assignée à ${driver.fullName}`, who.fullName],
   );
   await audit(client, "Assignation livreur", "Order", id);
+  const title = `Nouvelle commande ${current.rows[0].reference}`;
+  const message = `${current.rows[0].customer_name} · ${driver.fullName}`;
   await pingManagers(client, {
     title: `Livreur assigné · ${current.rows[0].reference}`,
-    message: `${driver.fullName} · ${current.rows[0].customer_name}`,
+    message,
     href: "/commandes",
+  });
+  await pingUsers([driver.userId], {
+    title,
+    message: `${current.rows[0].customer_name} — à livrer`,
+    href: "/livreur",
   });
 }
 

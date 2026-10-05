@@ -32,6 +32,7 @@ export type OrderCreateInput = {
   items: Array<Omit<OrderItem, "id">>;
   driverId?: ID;
   posteId?: ID;
+  dueAt?: string;
 };
 
 export type SaleCreateInput = {

@@ -1,7 +1,7 @@
 import { useId, useState, type CSSProperties } from "react";
 import { toast } from "sonner";
 import { AmountInput, toNumber } from "@/lib/amount";
-import { moneyCdf, moneyUsd, nextOrderStatus, ORDER_PIPELINE, ORDER_STATUS_LABEL, ORDER_STATUS_ORDER } from "@/lib/format";
+import { moneyCdf, moneyUsd, nextOrderStatus, ORDER_PIPELINE, ORDER_STATUS_LABEL, ORDER_STATUS_ORDER, timeKinshasa } from "@/lib/format";
 import { communeName, zoneName } from "@/lib/geo";
 import { mapsHref, telHref, whatsappHref } from "@/lib/phone";
 import { ordersService } from "@/services";
@@ -80,6 +80,17 @@ export function RunCard({ order }: { order: Order }) {
       </div>
 
       <p className="run-card__place">{place}</p>
+      {order.dueAt && (
+        <p className="run-card__place">
+          Heure : <strong>{timeKinshasa(order.dueAt)}</strong>
+        </p>
+      )}
+      {order.notes.trim() ? (
+        <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
+          <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Note</p>
+          <p className="mt-0.5 whitespace-pre-wrap">{order.notes}</p>
+        </div>
+      ) : null}
 
       <ul className="run-card__items">
         {order.items.map((it) => (

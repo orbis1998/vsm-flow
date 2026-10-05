@@ -47,6 +47,20 @@ export function dateTime(iso: string): string {
   }).format(new Date(iso));
 }
 
+export function timeKinshasa(iso: string): string {
+  return new Intl.DateTimeFormat("fr-FR", {
+    timeZone: "Africa/Kinshasa",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(iso));
+}
+
+export function dueAtFromKinshasaTime(hhmm: string): string | undefined {
+  const m = /^(\d{2}):(\d{2})$/.exec(hhmm.trim());
+  if (!m) return undefined;
+  return new Date(`${kinshasaYmd()}T${m[1]}:${m[2]}:00+01:00`).toISOString();
+}
+
 export function kinshasaYmd(d: Date = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Africa/Kinshasa",
