@@ -67,8 +67,10 @@ export const COMPANY: CompanySettings = {
   email: "contact@vsmcollection.cd",
   address: "12, av. du Commerce, Gombe, Kinshasa",
   currency: "USD",
+  usdCdfRate: 2800,
   defaultDeliveryFee: 4,
   lowStockAlert: true,
+  mapboxToken: "",
 };
 
 export const POSTES: Poste[] = [

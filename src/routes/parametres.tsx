@@ -76,6 +76,20 @@ function SettingsPage() {
             />
             <p className="mt-1 text-xs text-muted-foreground">1 $ = {form.usdCdfRate} CDF. Les articles sont en USD, les frais de livraison en CDF.</p>
           </div>
+          <div>
+            <Label>Jeton Mapbox (carte livreurs)</Label>
+            <Input
+              type="password"
+              autoComplete="off"
+              value={form.mapboxToken ?? ""}
+              onChange={(e) => setForm({ ...form, mapboxToken: e.target.value })}
+              placeholder="pk.ey…"
+              disabled={!can("settings.manage")}
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Jeton public sur mapbox.com → Account → Access tokens. La carte Logistique montre les livreurs en course.
+            </p>
+          </div>
           <div className="flex items-center justify-between rounded-md border px-3 py-2">
             <Label>Alerte stock bas</Label>
             <Switch checked={form.lowStockAlert} onCheckedChange={(v) => setForm({ ...form, lowStockAlert: v })} disabled={!can("settings.manage")} />

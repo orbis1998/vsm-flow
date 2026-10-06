@@ -251,6 +251,11 @@ export interface DeliveryDriver {
   zoneIds: ID[];
   active: boolean;
   canSell: boolean;
+  lastLat?: number | undefined;
+  lastLng?: number | undefined;
+  lastHeading?: number | undefined;
+  lastAccuracy?: number | undefined;
+  lastSeenAt?: ISODate | undefined;
 }
 
 /* --------------------------------- Commandes -------------------------------- */
@@ -427,4 +432,5 @@ export interface CompanySettings {
   usdCdfRate: number;
   defaultDeliveryFee: number;
   lowStockAlert: boolean;
+  mapboxToken: string;
 }

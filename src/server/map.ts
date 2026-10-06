@@ -55,6 +55,8 @@ export function optNum(value: unknown): number | undefined {
 }
 
 export function mapCompany(row: Record<string, unknown>): CompanySettings {
+  const envToken =
+    process.env.MAPBOX_PUBLIC_TOKEN || process.env.VITE_MAPBOX_TOKEN || process.env.MAPBOX_TOKEN || "";
   return {
     name: String(row.name ?? "Business Suite"),
     legalName: String(row.legal_name ?? ""),
@@ -65,6 +67,7 @@ export function mapCompany(row: Record<string, unknown>): CompanySettings {
     usdCdfRate: num(row.usd_cdf_rate) || 2800,
     defaultDeliveryFee: num(row.default_delivery_fee),
     lowStockAlert: Boolean(row.low_stock_alert),
+    mapboxToken: String(row.mapbox_token ?? "").trim() || envToken.trim(),
   };
 }
 
@@ -97,7 +100,7 @@ export function mapUser(row: Record<string, unknown>, extraPermissions: User["ex
 }
 
 export function mapDriver(row: Record<string, unknown>, zoneIds: string[]): DeliveryDriver {
-  return {
+  const driver: DeliveryDriver = {
     id: String(row.id),
     userId: String(row.user_id),
     fullName: String(row.full_name),
@@ -107,6 +110,17 @@ export function mapDriver(row: Record<string, unknown>, zoneIds: string[]): Deli
     canSell: row.can_sell === true || row.can_sell === "t" || row.can_sell === "true",
     active: row.active !== false && row.active !== "f" && row.active !== "false",
   };
+  const lat = optNum(row.last_lat);
+  const lng = optNum(row.last_lng);
+  if (lat != null && Number.isFinite(lat)) driver.lastLat = lat;
+  if (lng != null && Number.isFinite(lng)) driver.lastLng = lng;
+  const heading = optNum(row.last_heading);
+  if (heading != null && Number.isFinite(heading)) driver.lastHeading = heading;
+  const accuracy = optNum(row.last_accuracy);
+  if (accuracy != null && Number.isFinite(accuracy)) driver.lastAccuracy = accuracy;
+  const seen = optIso(row.last_seen_at);
+  if (seen) driver.lastSeenAt = seen;
+  return driver;
 }
 
 export function mapCategory(row: Record<string, unknown>): Category {

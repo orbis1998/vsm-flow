@@ -123,6 +123,9 @@ export const ordersService = {
   async remove(id: ID) {
     await mutate({ op: "order.remove", id });
   },
+  async pingLocation(input: { userId: ID; lat: number; lng: number; heading?: number; accuracy?: number }) {
+    await mutateAppFn({ data: { op: "driver.ping", ...input } } as never);
+  },
 };
 
 /* ---------------------------------- Ventes --------------------------------- */

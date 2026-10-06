@@ -59,6 +59,7 @@ export const EMPTY_APP_STATE: AppState = {
     usdCdfRate: 2800,
     defaultDeliveryFee: 0,
     lowStockAlert: true,
+    mapboxToken: "",
   },
   postes: [],
   users: [],

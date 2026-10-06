@@ -1,17 +1,20 @@
 import { useQuery } from "@tanstack/react-query";
+import { useRouterState } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { APP_STATE_KEY, EMPTY_APP_STATE, type AppState } from "@/lib/app-state";
 import { getAppStateFn } from "@/fn/app";
 import { LogoMark } from "@/components/brand/LogoMark";
 
 export function useAppQuery() {
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const live = pathname === "/logistique" || pathname.startsWith("/livreur");
   return useQuery({
     queryKey: APP_STATE_KEY,
     queryFn: () => getAppStateFn(),
-    staleTime: 5 * 60_000,
+    staleTime: live ? 8_000 : 5 * 60_000,
     gcTime: 30 * 60_000,
-    refetchInterval: 90_000,
-    refetchOnWindowFocus: false,
+    refetchInterval: live ? 12_000 : 90_000,
+    refetchOnWindowFocus: live,
     placeholderData: (previous) => previous,
     retry: 2,
   });

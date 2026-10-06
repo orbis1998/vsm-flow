@@ -98,7 +98,7 @@ async function grabClient(): Promise<pg.PoolClient> {
   throw last;
 }
 
-const SCHEMA_VERSION = 9;
+const SCHEMA_VERSION = 10;
 
 export type ManagerPing = {
   title: string;
@@ -166,6 +166,16 @@ async function prepare(client: pg.PoolClient) {
   } catch {
     // colonne déjà présente ou connexion interrompue
   }
+  try {
+    await client.query(`alter table delivery_drivers add column if not exists last_lat double precision`);
+    await client.query(`alter table delivery_drivers add column if not exists last_lng double precision`);
+    await client.query(`alter table delivery_drivers add column if not exists last_heading double precision`);
+    await client.query(`alter table delivery_drivers add column if not exists last_accuracy double precision`);
+    await client.query(`alter table delivery_drivers add column if not exists last_seen_at timestamptz`);
+    await client.query(`alter table company_settings add column if not exists mapbox_token text not null default ''`);
+  } catch {
+    // colonnes déjà présentes
+  }
   if (tagged.__vsmSchema === SCHEMA_VERSION) return;
   await client.query(`alter table products add column if not exists image_url text not null default ''`);
   await client.query(`alter table orders alter column customer_id drop not null`);
@@ -174,6 +184,12 @@ async function prepare(client: pg.PoolClient) {
   await client.query(`alter table orders add column if not exists due_at timestamptz`);
   await client.query(`alter table sales add column if not exists kind text not null default 'comptoir'`);
   await client.query(`alter table order_items add column if not exists from_driver integer`);
+  await client.query(`alter table delivery_drivers add column if not exists last_lat double precision`);
+  await client.query(`alter table delivery_drivers add column if not exists last_lng double precision`);
+  await client.query(`alter table delivery_drivers add column if not exists last_heading double precision`);
+  await client.query(`alter table delivery_drivers add column if not exists last_accuracy double precision`);
+  await client.query(`alter table delivery_drivers add column if not exists last_seen_at timestamptz`);
+  await client.query(`alter table company_settings add column if not exists mapbox_token text not null default ''`);
   await client.query(`update users set poste_id = null where role = 'ADMIN' and poste_id is not null`);
   await client.query(`
     create table if not exists push_subscriptions (

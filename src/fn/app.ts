@@ -86,7 +86,8 @@ export type AppMutation =
   | { op: "commune.create"; name: string }
   | { op: "zone.create"; input: { communeId: ID; name: string; defaultFee: number } }
   | { op: "order.collect"; id: ID; receivedUsd: number; receivedCdf: number }
-  | { op: "order.items"; id: ID; items: Array<Omit<OrderItem, "id">> };
+  | { op: "order.items"; id: ID; items: Array<Omit<OrderItem, "id">> }
+  | { op: "driver.ping"; userId: ID; lat: number; lng: number; heading?: number; accuracy?: number };
 
 export const getAppStateFn = createServerFn({ method: "GET" }).handler(async () => {
   const { loadAppState } = await import("@/server/snapshot");
@@ -228,6 +229,15 @@ export const mutateAppFn = createServerFn({ method: "POST", strict: false })
           return null;
         case "order.items":
           await m.replaceOrderItems(client, data.id, data.items);
+          return null;
+        case "driver.ping":
+          await m.pingDriverLocation(client, {
+            userId: data.userId,
+            lat: data.lat,
+            lng: data.lng,
+            heading: data.heading,
+            accuracy: data.accuracy,
+          });
           return null;
         default:
           throw new Error("Opération inconnue.");

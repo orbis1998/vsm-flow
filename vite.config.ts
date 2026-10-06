@@ -15,6 +15,7 @@ export default defineConfig({
   vite: {
     optimizeDeps: {
       holdUntilCrawlEnd: false,
+      include: ["mapbox-gl"],
     },
   },
 });

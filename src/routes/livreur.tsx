@@ -5,6 +5,7 @@ import { APP_NAME } from "@/lib/brand";
 import { useSession } from "@/hooks/useSession";
 import { usePushNotifications } from "@/hooks/usePush";
 import { RunCard } from "@/components/livreur/RunCard";
+import { useDriverLocation } from "@/hooks/useDriverLocation";
 import { Empty, Forbidden, PageHeader } from "@/components/common/ui-bits";
 import { Button } from "@/components/ui/button";
 import { ORDER_STATUS_LABEL } from "@/lib/format";
@@ -24,10 +25,13 @@ function DriverPage() {
   const drivers = useAppState((s) => s.drivers);
   const orders = useAppState((s) => s.orders);
   const push = usePushNotifications(user.id);
-  if (!can("driver.space") && !can("orders.assigned.view")) return <Forbidden />;
+  const allowed = can("driver.space") || can("orders.assigned.view");
   const driver = drivers.find((d) => d.userId === user.id) ?? drivers.find((d) => d.fullName === user.fullName);
   const mine = orders.filter((o) => driver && o.driverId === driver.id && !["livree", "annulee"].includes(o.status));
   const done = orders.filter((o) => driver && o.driverId === driver.id && o.status === "livree");
+  const tracking = allowed && mine.some((o) => o.status === "en_livraison");
+  useDriverLocation(user.id, tracking);
+  if (!allowed) return <Forbidden />;
 
   return (
     <div className="mx-auto max-w-lg pb-8">
@@ -53,6 +57,11 @@ function DriverPage() {
             {push.busy ? "Activation…" : "Activer les notifications"}
           </Button>
         </div>
+      )}
+      {tracking && (
+        <p className="mb-4 rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+          Position partagée pendant la course — le bureau vous voit sur la carte.
+        </p>
       )}
       {!driver && (
         <p className="mb-4 text-sm text-muted-foreground">

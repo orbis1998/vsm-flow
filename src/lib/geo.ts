@@ -52,3 +52,40 @@ export function zoneName(id: string): string {
 export function zonesOfCommune(communeId: string): DeliveryZone[] {
   return ZONES.filter((z) => z.communeId === communeId);
 }
+
+/** Centre approximatif de chaque commune de Kinshasa [lng, lat]. */
+export const KINSHASA_CENTER: [number, number] = [15.3136, -4.3276];
+
+const COMMUNE_LNG_LAT: Record<string, [number, number]> = {
+  Gombe: [15.303, -4.305],
+  Kinshasa: [15.307, -4.327],
+  Barumbu: [15.322, -4.32],
+  Lingwala: [15.295, -4.325],
+  Kintambo: [15.273, -4.327],
+  "Kasa-Vubu": [15.294, -4.338],
+  Kalamu: [15.308, -4.341],
+  "Ngiri-Ngiri": [15.29, -4.348],
+  Bandalungwa: [15.268, -4.341],
+  Selembao: [15.28, -4.368],
+  Bumbu: [15.295, -4.365],
+  Makala: [15.31, -4.365],
+  Ngaba: [15.315, -4.378],
+  Lemba: [15.31, -4.395],
+  Matete: [15.345, -4.385],
+  Limete: [15.345, -4.34],
+  Kisenso: [15.345, -4.41],
+  Ndjili: [15.375, -4.395],
+  Masina: [15.39, -4.37],
+  Kimbanseke: [15.38, -4.42],
+  Ngaliema: [15.25, -4.33],
+  "Mont-Ngafula": [15.28, -4.43],
+  Nsele: [15.5, -4.38],
+  Maluku: [15.55, -4.2],
+};
+
+export function communeLngLat(name: string): [number, number] | undefined {
+  const exact = COMMUNE_LNG_LAT[name];
+  if (exact) return exact;
+  const key = Object.keys(COMMUNE_LNG_LAT).find((k) => k.toLowerCase() === name.trim().toLowerCase());
+  return key ? COMMUNE_LNG_LAT[key] : undefined;
+}

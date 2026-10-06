@@ -6,6 +6,7 @@ import { money } from "@/lib/format";
 import { APP_NAME } from "@/lib/brand";
 import { ordersService } from "@/services";
 import { useSession } from "@/hooks/useSession";
+import { LiveMap } from "@/components/logistique/LiveMap";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
@@ -27,11 +28,14 @@ function LogisticsPage() {
   const { can } = useSession();
   const orders = useAppState((s) => s.orders);
   const drivers = useAppState((s) => s.drivers);
+  const communes = useAppState((s) => s.communes);
+  const mapboxToken = useAppState((s) => s.company.mapboxToken);
   if (!can("logistics.view")) return <Forbidden />;
 
   const toAssign = orders.filter((o) => ["nouvelle", "a_preparer", "prete"].includes(o.status) && !o.driverId);
   const active = orders.filter((o) => ["assignee", "en_livraison"].includes(o.status));
   const activeDrivers = drivers.filter((d) => d.active);
+  const onRun = drivers.filter((d) => active.some((o) => o.driverId === d.id));
 
   return (
     <div>
@@ -41,6 +45,9 @@ function LogisticsPage() {
         <StatCard label="En cours" value={active.length} />
         <StatCard label="Livreurs actifs" value={drivers.filter((d) => d.active).length} />
         <StatCard label="À encaisser (en cours)" value={money(active.reduce((s, o) => s + o.totalToCollect, 0))} />
+      </div>
+      <div className="mt-6">
+        <LiveMap token={mapboxToken} drivers={onRun} orders={active} communes={communes} />
       </div>
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
         <Card className="rounded-md">
@@ -91,7 +98,14 @@ function LogisticsPage() {
                   <div className="flex min-w-0 items-start justify-between gap-2">
                     <div className="min-w-0">
                       <div className="truncate font-semibold">{d.fullName}</div>
-                      <div className="truncate text-xs text-muted-foreground">{d.vehicle} · {d.phone}</div>
+                      <div className="truncate text-xs text-muted-foreground">
+                        {d.vehicle} · {d.phone}
+                        {d.lastSeenAt
+                          ? ` · vu ${Math.max(0, Math.round((Date.now() - new Date(d.lastSeenAt).getTime()) / 60000))} min`
+                          : mine.length
+                            ? " · GPS pas encore reçue"
+                            : ""}
+                      </div>
                     </div>
                     <div className="flex shrink-0 flex-wrap justify-end gap-1">
                       {d.canSell && <Badge variant="outline">Vente</Badge>}

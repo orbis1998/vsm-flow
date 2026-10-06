@@ -109,6 +109,33 @@ async function livreurUserIds(client: Client): Promise<string[]> {
   return res.rows.map((r) => String(r.id));
 }
 
+export async function pingDriverLocation(
+  client: Client,
+  input: { userId: string; lat: number; lng: number; heading?: number; accuracy?: number },
+): Promise<void> {
+  const lat = Number(input.lat);
+  const lng = Number(input.lng);
+  if (!input.userId || !Number.isFinite(lat) || !Number.isFinite(lng)) return;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return;
+  const driver = await client.query("select id from delivery_drivers where user_id = $1", [input.userId]);
+  if (!driver.rows[0]) return;
+  const heading = Number(input.heading);
+  const accuracy = Number(input.accuracy);
+  await client.query(
+    `update delivery_drivers set
+      last_lat = $2, last_lng = $3,
+      last_heading = $4, last_accuracy = $5, last_seen_at = now()
+     where id = $1`,
+    [
+      driver.rows[0].id,
+      lat,
+      lng,
+      Number.isFinite(heading) ? heading : null,
+      Number.isFinite(accuracy) ? accuracy : null,
+    ],
+  );
+}
+
 const DELIVERY_STATUSES = new Set(["assignee", "en_livraison", "livree", "echec", "retour"]);
 
 async function syncDeliveryRow(
@@ -1424,7 +1451,7 @@ export async function updateCompany(client: Client, patch: Partial<CompanySettin
   await client.query(
     `update company_settings set
       name = $1, legal_name = $2, phone = $3, email = $4, address = $5,
-      currency = $6, default_delivery_fee = $7, low_stock_alert = $8, usd_cdf_rate = $9, updated_at = now()
+      currency = $6, default_delivery_fee = $7, low_stock_alert = $8, usd_cdf_rate = $9, mapbox_token = $10, updated_at = now()
      where id = 'company'`,
     [
       patch.name ?? row.name,
@@ -1436,6 +1463,7 @@ export async function updateCompany(client: Client, patch: Partial<CompanySettin
       patch.defaultDeliveryFee ?? row.default_delivery_fee,
       patch.lowStockAlert ?? row.low_stock_alert,
       patch.usdCdfRate ?? row.usd_cdf_rate,
+      patch.mapboxToken !== undefined ? patch.mapboxToken.trim() : row.mapbox_token,
     ],
   );
   await audit(client, "Modification paramètres", "CompanySettings");
