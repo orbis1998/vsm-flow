@@ -39,7 +39,8 @@ export type Permission =
   | "settings.view"
   | "settings.manage"
   | "driver.space"
-  | "wholesale.use";
+  | "wholesale.use"
+  | "driver.stock";
 
 export interface Role {
   code: RoleCode;

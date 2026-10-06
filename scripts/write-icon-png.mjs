@@ -115,6 +115,142 @@ function makeBadge(size) {
   return encodePng(raw, size);
 }
 
+function fillBg(raw, size, rgb = [0xc4, 0x1e, 0x3a]) {
+  const radius = Math.round(size * (7 / 32));
+  for (let y = 0; y < size; y++) {
+    const row = y * (size * 4 + 1);
+    raw[row] = 0;
+    for (let x = 0; x < size; x++) {
+      const i = row + 1 + x * 4;
+      if (!inRoundRect(x, y, size, radius)) {
+        raw[i] = raw[i + 1] = raw[i + 2] = raw[i + 3] = 0;
+        continue;
+      }
+      raw[i] = rgb[0];
+      raw[i + 1] = rgb[1];
+      raw[i + 2] = rgb[2];
+      raw[i + 3] = 255;
+    }
+  }
+}
+
+function setPx(raw, size, x, y, rgb = [255, 255, 255], a = 255) {
+  x = Math.round(x);
+  y = Math.round(y);
+  if (x < 0 || y < 0 || x >= size || y >= size) return;
+  const i = y * (size * 4 + 1) + 1 + x * 4;
+  raw[i] = rgb[0];
+  raw[i + 1] = rgb[1];
+  raw[i + 2] = rgb[2];
+  raw[i + 3] = a;
+}
+
+function fillCircle(raw, size, cx, cy, r, rgb) {
+  const r2 = r * r;
+  for (let y = Math.floor(cy - r); y <= Math.ceil(cy + r); y++) {
+    for (let x = Math.floor(cx - r); x <= Math.ceil(cx + r); x++) {
+      if ((x - cx) ** 2 + (y - cy) ** 2 <= r2) setPx(raw, size, x, y, rgb);
+    }
+  }
+}
+
+function strokeCircle(raw, size, cx, cy, r, w, rgb) {
+  const outer = (r + w / 2) ** 2;
+  const inner = Math.max(0, r - w / 2) ** 2;
+  for (let y = Math.floor(cy - r - w); y <= Math.ceil(cy + r + w); y++) {
+    for (let x = Math.floor(cx - r - w); x <= Math.ceil(cx + r + w); x++) {
+      const d = (x - cx) ** 2 + (y - cy) ** 2;
+      if (d <= outer && d >= inner) setPx(raw, size, x, y, rgb);
+    }
+  }
+}
+
+function fillRect(raw, size, x0, y0, w, h, rgb, r = 0) {
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (r && !inBar(x, y, size, 0, 0, w, h, r)) continue;
+      setPx(raw, size, x0 + x, y0 + y, rgb);
+    }
+  }
+}
+
+function strokeLine(raw, size, x0, y0, x1, y1, w, rgb) {
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  const len = Math.hypot(dx, dy) || 1;
+  const steps = Math.ceil(len * 2);
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    fillCircle(raw, size, x0 + dx * t, y0 + dy * t, w / 2, rgb);
+  }
+}
+
+function makeNotify(size, draw) {
+  const raw = Buffer.alloc((size * 4 + 1) * size);
+  fillBg(raw, size);
+  draw(raw, size);
+  return encodePng(raw, size);
+}
+
+function drawCart(raw, size) {
+  const w = [255, 255, 255];
+  const s = size;
+  fillRect(raw, s, s * 0.22, s * 0.34, s * 0.52, s * 0.34, w, Math.round(s * 0.04));
+  fillRect(raw, s, s * 0.18, s * 0.28, s * 0.16, s * 0.07, w, Math.round(s * 0.02));
+  strokeLine(raw, s, s * 0.22, s * 0.31, s * 0.34, s * 0.31, s * 0.045, w);
+  fillCircle(raw, s, s * 0.36, s * 0.78, s * 0.055, w);
+  fillCircle(raw, s, s * 0.64, s * 0.78, s * 0.055, w);
+}
+
+function drawCheck(raw, size) {
+  const w = [255, 255, 255];
+  strokeCircle(raw, size, size * 0.5, size * 0.5, size * 0.28, size * 0.055, w);
+  strokeLine(raw, size, size * 0.32, size * 0.52, size * 0.46, size * 0.66, size * 0.07, w);
+  strokeLine(raw, size, size * 0.46, size * 0.66, size * 0.7, size * 0.36, size * 0.07, w);
+}
+
+function drawBike(raw, size) {
+  const w = [255, 255, 255];
+  strokeCircle(raw, size, size * 0.3, size * 0.64, size * 0.14, size * 0.05, w);
+  strokeCircle(raw, size, size * 0.7, size * 0.64, size * 0.14, size * 0.05, w);
+  strokeLine(raw, size, size * 0.3, size * 0.64, size * 0.48, size * 0.4, size * 0.055, w);
+  strokeLine(raw, size, size * 0.48, size * 0.4, size * 0.7, size * 0.64, size * 0.055, w);
+  strokeLine(raw, size, size * 0.42, size * 0.64, size * 0.58, size * 0.64, size * 0.05, w);
+  strokeLine(raw, size, size * 0.48, size * 0.4, size * 0.48, size * 0.3, size * 0.05, w);
+  fillRect(raw, size, size * 0.4, size * 0.24, size * 0.2, size * 0.06, w, 2);
+}
+
+function drawWarn(raw, size) {
+  const w = [255, 255, 255];
+  const cx = size * 0.5;
+  strokeLine(raw, size, cx, size * 0.22, size * 0.78, size * 0.74, size * 0.06, w);
+  strokeLine(raw, size, size * 0.78, size * 0.74, size * 0.22, size * 0.74, size * 0.06, w);
+  strokeLine(raw, size, size * 0.22, size * 0.74, cx, size * 0.22, size * 0.06, w);
+  fillRect(raw, size, cx - size * 0.03, size * 0.4, size * 0.06, size * 0.18, w, 2);
+  fillCircle(raw, size, cx, size * 0.64, size * 0.035, w);
+}
+
+function drawBox(raw, size) {
+  const w = [255, 255, 255];
+  const x = size * 0.24;
+  const y = size * 0.3;
+  const bw = size * 0.52;
+  const bh = size * 0.42;
+  strokeLine(raw, size, x, y, x + bw, y, size * 0.055, w);
+  strokeLine(raw, size, x + bw, y, x + bw, y + bh, size * 0.055, w);
+  strokeLine(raw, size, x + bw, y + bh, x, y + bh, size * 0.055, w);
+  strokeLine(raw, size, x, y + bh, x, y, size * 0.055, w);
+  strokeLine(raw, size, x, y + bh * 0.38, x + bw, y + bh * 0.38, size * 0.05, w);
+  strokeLine(raw, size, x + bw / 2, y, x + bw / 2, y + bh * 0.38, size * 0.05, w);
+}
+
+function drawEdit(raw, size) {
+  const w = [255, 255, 255];
+  strokeLine(raw, size, size * 0.3, size * 0.7, size * 0.68, size * 0.32, size * 0.07, w);
+  fillRect(raw, size, size * 0.64, size * 0.22, size * 0.12, size * 0.12, w, 2);
+  strokeLine(raw, size, size * 0.26, size * 0.78, size * 0.42, size * 0.78, size * 0.045, w);
+}
+
 function encodePng(raw, size) {
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(size, 0);
@@ -161,4 +297,17 @@ fs.writeFileSync(path.join(dir, "favicon.ico"), makeIco([
   { size: 32, data: png32 },
   { size: 48, data: png48 },
 ]));
-console.log("wrote public/icon-192.png, public/icon-96.png, public/badge-96.png and public/favicon.ico");
+const notifyDir = path.join(dir, "notify");
+fs.mkdirSync(notifyDir, { recursive: true });
+const glyphs = {
+  cart: drawCart,
+  check: drawCheck,
+  bike: drawBike,
+  warn: drawWarn,
+  box: drawBox,
+  edit: drawEdit,
+};
+for (const [name, draw] of Object.entries(glyphs)) {
+  fs.writeFileSync(path.join(notifyDir, `${name}.png`), makeNotify(192, draw));
+}
+console.log("wrote icons, badge and public/notify/{cart,check,bike,warn,box,edit}.png");

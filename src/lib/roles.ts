@@ -25,6 +25,7 @@ const ALL: Permission[] = [
   "settings.manage",
   "driver.space",
   "wholesale.use",
+  "driver.stock",
 ];
 
 export const ROLES: Record<RoleCode, Role> = {
@@ -66,7 +67,7 @@ export const ROLES: Record<RoleCode, Role> = {
   LIVREUR: {
     code: "LIVREUR",
     label: "Livreur",
-    description: "Courses assignées et stock emporté.",
+    description: "Courses assignées. La dotation stock se gère via une permission.",
     permissions: ["orders.assigned.view", "driver.space", "stock.view"],
     enabled: true,
   },
@@ -101,6 +102,26 @@ export const ROLES: Record<RoleCode, Role> = {
 };
 
 export const ROLE_LIST = Object.values(ROLES);
+
+export const GRANTABLE_PERMISSIONS: Array<{ perm: Permission; label: string }> = [
+  { perm: "driver.stock", label: "Porte un stock (dotation livreur)" },
+  { perm: "pos.use", label: "Caisse" },
+  { perm: "wholesale.use", label: "Vente en gros" },
+  { perm: "orders.view", label: "Voir les commandes" },
+  { perm: "orders.manage", label: "Gérer les commandes" },
+  { perm: "stock.view", label: "Voir le stock" },
+  { perm: "stock.manage", label: "Gérer le stock" },
+  { perm: "products.view", label: "Voir les articles" },
+  { perm: "products.manage", label: "Gérer les articles" },
+  { perm: "customers.view", label: "Clients" },
+  { perm: "finance.view", label: "Finance" },
+  { perm: "reports.view", label: "Rapports" },
+  { perm: "logistics.view", label: "Livraisons" },
+];
+
+export function hasPermission(role: RoleCode, extra: Permission[], perm: Permission): boolean {
+  return ROLES[role].permissions.includes(perm) || extra.includes(perm);
+}
 
 export function homePath(role: RoleCode): string {
   if (role === "LIVREUR") return "/livreur";

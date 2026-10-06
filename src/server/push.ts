@@ -6,10 +6,22 @@ export function vapidPublicKey(): string {
   return process.env.VAPID_PUBLIC_KEY ?? "";
 }
 
+export type NotifyGlyph = "cart" | "check" | "bike" | "warn" | "box" | "edit";
+
+export function inferGlyph(title: string, body = ""): NotifyGlyph {
+  const t = `${title} ${body}`.toLowerCase();
+  if (t.includes("échec") || t.includes("echec") || t.includes("échou")) return "warn";
+  if (t.includes("livrée") || t.includes("livree")) return "check";
+  if (t.includes("stock") || t.includes("dotation")) return "box";
+  if (t.includes("assign") || t.includes("en route")) return "bike";
+  if (t.includes("corrig")) return "edit";
+  return "cart";
+}
+
 export async function sendWebPush(
   client: Client,
   userIds: string[],
-  payload: { title: string; body: string; href?: string },
+  payload: { title: string; body: string; href?: string; glyph?: NotifyGlyph },
 ): Promise<void> {
   const publicKey = process.env.VAPID_PUBLIC_KEY;
   const privateKey = process.env.VAPID_PRIVATE_KEY;
@@ -32,6 +44,7 @@ export async function sendWebPush(
     title: payload.title,
     body: payload.body,
     href,
+    glyph: payload.glyph ?? inferGlyph(payload.title, payload.body),
   });
   for (const row of subs.rows) {
     try {

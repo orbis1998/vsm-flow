@@ -10,14 +10,14 @@ export function driverVariantQty(
   productId: string,
   variantId?: string,
 ): number {
-  return lines
-    .filter(
-      (l) =>
-        l.driverId === driverId &&
-        l.productId === productId &&
-        (l.variantId ?? "") === (variantId ?? ""),
-    )
+  const mine = lines.filter((l) => l.driverId === driverId && l.productId === productId);
+  const exact = mine
+    .filter((l) => (l.variantId ?? "") === (variantId ?? ""))
     .reduce((sum, l) => sum + l.quantity, 0);
+  if (exact > 0) return exact;
+  const loose = mine.filter((l) => !l.variantId).reduce((sum, l) => sum + l.quantity, 0);
+  if (loose > 0) return loose;
+  return mine.reduce((sum, l) => sum + l.quantity, 0);
 }
 
 export function driverProductQty(lines: DriverStockLine[], driverId: string, productId: string): number {

@@ -1,5 +1,3 @@
-const APP_NAME = "Business Suite";
-
 self.addEventListener("install", (event) => {
   event.waitUntil(self.skipWaiting());
 });
@@ -15,8 +13,18 @@ self.addEventListener("fetch", (event) => {
   );
 });
 
+function inferGlyph(title, body) {
+  const t = `${title || ""} ${body || ""}`.toLowerCase();
+  if (t.includes("échec") || t.includes("echec") || t.includes("échou")) return "warn";
+  if (t.includes("livrée") || t.includes("livree")) return "check";
+  if (t.includes("stock") || t.includes("dotation")) return "box";
+  if (t.includes("assign") || t.includes("en route")) return "bike";
+  if (t.includes("corrig")) return "edit";
+  return "cart";
+}
+
 self.addEventListener("push", (event) => {
-  let data = { title: "", body: "Nouvelle activité", href: "/" };
+  let data = { title: "", body: "", href: "/", glyph: "" };
   try {
     if (event.data) data = { ...data, ...event.data.json() };
   } catch {
@@ -24,16 +32,18 @@ self.addEventListener("push", (event) => {
   }
   const eventTitle = typeof data.title === "string" ? data.title.trim() : "";
   const eventBody = typeof data.body === "string" ? data.body.trim() : "";
-  const lines = [eventTitle && eventTitle !== APP_NAME ? eventTitle : "", eventBody].filter(Boolean);
+  const glyph = typeof data.glyph === "string" && data.glyph ? data.glyph : inferGlyph(eventTitle, eventBody);
+  const origin = self.location.origin;
   event.waitUntil(
-    self.registration.showNotification(APP_NAME, {
-      body: lines.join("\n") || "Nouvelle activité",
-      icon: `${self.location.origin}/icon-192.png`,
+    self.registration.showNotification(eventTitle || "Nouvelle activité", {
+      body: eventBody || "",
+      icon: `${origin}/notify/${glyph}.png`,
+      badge: `${origin}/badge-96.png`,
       vibrate: [200, 100, 200],
       requireInteraction: true,
       renotify: true,
       silent: false,
-      tag: "vsm-flow",
+      tag: `vsm-${glyph}-${Date.now()}`,
       timestamp: Date.now(),
       data: { href: data.href || "/commandes" },
     }),

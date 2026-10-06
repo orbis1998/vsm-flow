@@ -96,7 +96,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "twitter:site", content: "@businesssuite" },
       { name: "theme-color", content: "#c41e3a" },
       { name: "apple-mobile-web-app-capable", content: "yes" },
-      { name: "apple-mobile-web-app-title", content: APP_NAME },
+      { name: "apple-mobile-web-app-title", content: "BizSuite" },
       { name: "mobile-web-app-capable", content: "yes" },
     ],
     links: [

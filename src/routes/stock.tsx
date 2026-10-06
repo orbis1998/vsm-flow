@@ -6,6 +6,7 @@ import { productStock } from "@/lib/catalog";
 import { AmountInput, toNumber } from "@/lib/amount";
 import { dateTime, money, num } from "@/lib/format";
 import { APP_NAME } from "@/lib/brand";
+import { hasPermission } from "@/lib/roles";
 import { stockService } from "@/services";
 import { useSession } from "@/hooks/useSession";
 import { Button } from "@/components/ui/button";
@@ -130,7 +131,11 @@ function StockPage() {
   const selected = products.find((p) => p.id === productId);
   const dotProduct = products.find((p) => p.id === dotProductId);
   const allocated = driverStock.filter((l) => l.quantity > 0);
-  const activeDrivers = drivers.filter((d) => d.active);
+  const stockedDrivers = drivers.filter((d) => {
+    if (!d.active) return false;
+    const u = users.find((x) => x.id === d.userId) ?? users.find((x) => x.fullName === d.fullName);
+    return u ? hasPermission(u.role, u.extraPermissions ?? [], "driver.stock") : false;
+  });
 
   const submit = async () => {
     const quantity = Math.round(toNumber(qty));
@@ -253,16 +258,21 @@ function StockPage() {
           {can("stock.manage") && (
             <div className="mb-6 grid max-w-lg gap-3">
               <p className="text-sm text-muted-foreground">
-                La quantité est retirée du stock boutique du poste assigné au livreur.
+                Seuls les livreurs avec la permission « Porte un stock » (Équipe) apparaissent ici. La quantité est retirée du stock boutique. Les autres livreurs utilisent le stock boutique à l'assignation.
               </p>
               <div>
                 <Label>Livreur</Label>
+                {stockedDrivers.length === 0 ? (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Aucun livreur n'a encore la permission « Porte un stock ». Cochez-la dans Équipe.
+                  </p>
+                ) : (
                 <Select value={driverId} onValueChange={setDriverId}>
                   <SelectTrigger>
                     <SelectValue placeholder="Choisir un livreur" />
                   </SelectTrigger>
                   <SelectContent>
-                    {activeDrivers.map((d) => (
+                    {stockedDrivers.map((d) => (
                       <SelectItem key={d.id} value={d.id}>
                         {d.fullName}
                         {driverPoste.get(d.id) ? ` · ${driverPoste.get(d.id)}` : " · sans boutique"}
@@ -270,6 +280,7 @@ function StockPage() {
                     ))}
                   </SelectContent>
                 </Select>
+                )}
               </div>
               <div>
                 <Label>Article</Label>

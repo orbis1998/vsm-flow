@@ -292,7 +292,7 @@ function OrderSheet({ order, onClose }: { order: Order | null; onClose: () => vo
                     </Select>
                   </div>
                   <div className="min-w-0">
-                    <Label>Livreur (stock du livreur)</Label>
+                    <Label>Livreur (son stock d'abord, sinon la boutique)</Label>
                     {drivers.length === 0 ? (
                       <p className="mt-1 text-xs text-muted-foreground">
                         Aucun livreur. Créez un compte rôle Livreur dans Équipe.
@@ -390,13 +390,16 @@ function NewOrderDialog({
   const [variantId, setVariantId] = useState("");
   const [driverId, setDriverId] = useState("");
   const [saving, setSaving] = useState(false);
+  const [variantKey, setVariantKey] = useState(0);
 
-  const productQty = (p: { id: string; variants: Array<{ stock: number }> }) =>
-    driverId ? driverProductQty(driverStock, driverId, p.id) : productStock(p as never);
+  const productQty = (p: { id: string; variants: Array<{ id: string; stock: number }> }) => {
+    const boutique = productStock(p as never);
+    if (!driverId) return boutique;
+    return Math.max(driverProductQty(driverStock, driverId, p.id), boutique);
+  };
   const available = products.filter((p) => productQty(p) > 0);
   const selectedProduct = products.find((p) => p.id === productId);
-  const stockVariants =
-    selectedProduct?.variants.filter((v) => (driverId ? driverVariantQty(driverStock, driverId, selectedProduct.id, v.id) : v.stock) > 0) ?? [];
+  const stockVariants = selectedProduct?.variants ?? [];
   const fee = zones.find((z) => z.id === zoneId)?.defaultFee ?? 0;
   const total = lines.reduce((s, l) => {
     const p = products.find((x) => x.id === l.productId);
@@ -406,24 +409,33 @@ function NewOrderDialog({
   const addLine = () => {
     if (!productId) return;
     const p = products.find((x) => x.id === productId);
-    if (!p || productQty(p) < 1) {
-      toast.error(driverId ? "Cet article n'est pas dans le stock du livreur" : "Article en rupture de stock");
+    if (!p) return;
+    const chosen = variantId || pickAvailableVariant(p)?.id || p.variants[0]?.id;
+    const variant = p.variants.find((v) => v.id === chosen);
+    if (!variant) {
+      toast.error("Choisissez une variante");
       return;
     }
-    const chosen =
-      variantId ||
-      (driverId
-        ? p.variants.find((v) => driverVariantQty(driverStock, driverId, p.id, v.id) > 0)?.id
-        : pickAvailableVariant(p)?.id);
-    const variant = p.variants.find((v) => v.id === chosen);
-    const have = variant ? (driverId ? driverVariantQty(driverStock, driverId, p.id, variant.id) : variant.stock) : 0;
-    if (!variant || have < 1) {
-      toast.error(driverId ? "Variante absente du stock livreur" : "Choisissez une variante en stock");
+    const driverHave = driverId
+      ? Math.max(
+          driverVariantQty(driverStock, driverId, p.id, variant.id),
+          driverProductQty(driverStock, driverId, p.id),
+        )
+      : 0;
+    const boutiqueHave = variant.stock;
+    if (driverHave < 1 && boutiqueHave < 1) {
+      toast.error(`${p.name} : rupture de stock (livreur et boutique)`);
       return;
     }
     setLines((l) => [...l, { productId, variantId: variant.id, qty: 0 }]);
-    setProductId("");
-    setVariantId("");
+    const used = new Set(
+      [...lines, { productId, variantId: variant.id }]
+        .filter((l) => l.productId === productId)
+        .map((l) => l.variantId),
+    );
+    const nextVariant = p.variants.find((v) => !used.has(v.id));
+    setVariantId(nextVariant?.id ?? variant.id);
+    setVariantKey((n) => n + 1);
   };
 
   const submit = async () => {
@@ -445,17 +457,14 @@ function NewOrderDialog({
         (driverId
           ? p.variants.find((v) => driverVariantQty(driverStock, driverId, p.id, v.id) >= l.qty)
           : pickAvailableVariant(p, l.qty));
-      const have = variant
-        ? driverId
-          ? driverVariantQty(driverStock, driverId, p.id, variant.id)
-          : variant.stock
-        : 0;
+      const driverHave = variant && driverId ? driverVariantQty(driverStock, driverId, p.id, variant.id) : 0;
+      const boutiqueHave = variant ? variant.stock : 0;
       if (!l.qty || l.qty < 1) {
         toast.error(`${p.name} : indiquez la quantité`);
         return;
       }
-      if (!variant || have < l.qty) {
-        toast.error(`${p.name} : ${driverId ? "stock livreur" : "stock"} insuffisant`);
+      if (!variant || driverHave + boutiqueHave < l.qty) {
+        toast.error(`${p.name} : stock insuffisant`);
         return;
       }
       const label = variantLabel(variant.options);
@@ -576,17 +585,15 @@ function NewOrderDialog({
                 onValueChange={(v) => {
                   setProductId(v);
                   const p = products.find((x) => x.id === v);
-                  const first = p?.variants.find((x) =>
-                    driverId ? driverVariantQty(driverStock, driverId, p.id, x.id) > 0 : x.stock > 0,
-                  );
-                  setVariantId(first?.id ?? "");
+                  setVariantId(p?.variants[0]?.id ?? "");
+                  setVariantKey((n) => n + 1);
                 }}
               >
                 <SelectTrigger><SelectValue placeholder="Produit" /></SelectTrigger>
                 <SelectContent>
                   {available.length === 0 ? (
                     <SelectItem value="__empty" disabled>
-                      {driverId ? "Aucun article dans le stock de ce livreur" : "Aucun article en stock"}
+                      Aucun article en stock
                     </SelectItem>
                   ) : (
                     available.map((p) => (
@@ -597,14 +604,23 @@ function NewOrderDialog({
                   )}
                 </SelectContent>
               </Select>
-              <Select value={variantId || undefined} onValueChange={setVariantId} disabled={!productId}>
+              <Select
+                key={variantKey}
+                value={variantId || undefined}
+                onValueChange={setVariantId}
+                disabled={!productId}
+              >
                 <SelectTrigger><SelectValue placeholder="Variante / taille" /></SelectTrigger>
                 <SelectContent>
-                  {stockVariants.map((v) => (
-                    <SelectItem key={v.id} value={v.id}>
-                      {variantLabel(v.options)} · stock {driverId ? driverVariantQty(driverStock, driverId, selectedProduct!.id, v.id) : v.stock}
-                    </SelectItem>
-                  ))}
+                  {stockVariants.map((v) => {
+                    const dQty = driverId ? driverVariantQty(driverStock, driverId, selectedProduct!.id, v.id) : 0;
+                    const shown = driverId ? `${dQty} livreur · ${v.stock} boutique` : String(v.stock);
+                    return (
+                      <SelectItem key={v.id} value={v.id}>
+                        {variantLabel(v.options)} · {shown}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
               <Button type="button" variant="outline" onClick={addLine}>Ajouter</Button>
@@ -627,11 +643,17 @@ function NewOrderDialog({
             </div>
           </div>
           <div>
-            <Label>Livreur (facultatif — déduit son stock, pas celui de la boutique)</Label>
+            <Label>Livreur (facultatif — son stock d'abord, sinon la boutique)</Label>
             {drivers.length === 0 ? (
               <p className="mt-1 text-xs text-muted-foreground">Aucun livreur. Créez un compte rôle Livreur dans Équipe.</p>
             ) : (
-              <Select value={driverId || undefined} onValueChange={setDriverId}>
+              <Select
+                value={driverId || undefined}
+                onValueChange={(v) => {
+                  setDriverId(v);
+                  setVariantKey((n) => n + 1);
+                }}
+              >
                 <SelectTrigger><SelectValue placeholder="Assigner plus tard" /></SelectTrigger>
                 <SelectContent>
                   {drivers.map((d) => (

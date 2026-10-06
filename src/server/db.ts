@@ -98,7 +98,7 @@ async function grabClient(): Promise<pg.PoolClient> {
   throw last;
 }
 
-const SCHEMA_VERSION = 8;
+const SCHEMA_VERSION = 9;
 
 export type ManagerPing = {
   title: string;
@@ -161,6 +161,11 @@ async function prepare(client: pg.PoolClient) {
   } catch {
     // colonne déjà présente ou connexion interrompue
   }
+  try {
+    await client.query(`alter table order_items add column if not exists from_driver integer`);
+  } catch {
+    // colonne déjà présente ou connexion interrompue
+  }
   if (tagged.__vsmSchema === SCHEMA_VERSION) return;
   await client.query(`alter table products add column if not exists image_url text not null default ''`);
   await client.query(`alter table orders alter column customer_id drop not null`);
@@ -168,6 +173,7 @@ async function prepare(client: pg.PoolClient) {
   await client.query(`alter table notifications add column if not exists href text`);
   await client.query(`alter table orders add column if not exists due_at timestamptz`);
   await client.query(`alter table sales add column if not exists kind text not null default 'comptoir'`);
+  await client.query(`alter table order_items add column if not exists from_driver integer`);
   await client.query(`update users set poste_id = null where role = 'ADMIN' and poste_id is not null`);
   await client.query(`
     create table if not exists push_subscriptions (

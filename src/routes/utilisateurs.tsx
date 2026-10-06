@@ -3,7 +3,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Pencil, Plus, KeyRound, Trash2 } from "lucide-react";
 import { useAppState } from "@/lib/app-store";
-import { ROLE_LIST, ROLES } from "@/lib/roles";
+import { GRANTABLE_PERMISSIONS, ROLE_LIST, ROLES } from "@/lib/roles";
 import { dateTime } from "@/lib/format";
 import { usersService } from "@/services";
 import { useSession } from "@/hooks/useSession";
@@ -15,8 +15,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Forbidden, PageHeader } from "@/components/common/ui-bits";
-import type { RoleCode, User, UserStatus } from "@/types";
+import type { Permission, RoleCode, User, UserStatus } from "@/types";
 
 export const Route = createFileRoute("/utilisateurs")({
   head: () => ({
@@ -38,7 +39,12 @@ const emptyForm = {
   status: "actif" as UserStatus,
   vehicle: "",
   posteId: "",
+  extraPermissions: [] as Permission[],
 };
+
+function extrasForRole(role: RoleCode): typeof GRANTABLE_PERMISSIONS {
+  return GRANTABLE_PERMISSIONS.filter((g) => !ROLES[role].permissions.includes(g.perm));
+}
 
 function UsersPage() {
   const { can, user } = useSession();
@@ -69,6 +75,7 @@ function UsersPage() {
       status: u.status,
       vehicle: "",
       posteId: u.posteId ?? "",
+      extraPermissions: u.extraPermissions ?? [],
     });
     setOpen(true);
   };
@@ -92,6 +99,7 @@ function UsersPage() {
         role: form.role,
         status: form.status,
         posteId: assignedPoste,
+        extraPermissions: form.extraPermissions,
       });
       toast.success("Membre mis à jour");
     } else {
@@ -102,7 +110,7 @@ function UsersPage() {
         badge: form.badge,
         role: form.role,
         status: form.status,
-        extraPermissions: [],
+        extraPermissions: form.extraPermissions,
         password: form.password,
         vehicle: form.vehicle,
         posteId: assignedPoste || undefined,
@@ -150,6 +158,15 @@ function UsersPage() {
                       <div className="text-xs text-muted-foreground">
                         {u.badge} · {u.email}
                       </div>
+                      {(u.extraPermissions ?? []).length > 0 && (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {u.extraPermissions.map((p) => (
+                            <Badge key={p} variant="secondary" className="text-[10px] font-normal">
+                              {GRANTABLE_PERMISSIONS.find((g) => g.perm === p)?.label ?? p}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell>{ROLES[u.role].label}</TableCell>
                     <TableCell className="hidden max-w-[9rem] truncate text-xs sm:table-cell">
@@ -227,7 +244,7 @@ function UsersPage() {
         </TabsContent>
       </Tabs>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editing ? "Modifier le membre" : "Nouvel utilisateur"}</DialogTitle></DialogHeader>
           <div className="grid gap-3">
             <div><Label>Nom</Label><Input value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} /></div>
@@ -242,7 +259,12 @@ function UsersPage() {
               <Select
                 value={form.role}
                 onValueChange={(v) =>
-                  setForm({ ...form, role: v as RoleCode, posteId: v === "ADMIN" ? "" : form.posteId })
+                  setForm({
+                    ...form,
+                    role: v as RoleCode,
+                    posteId: v === "ADMIN" ? "" : form.posteId,
+                    extraPermissions: form.extraPermissions.filter((p) => !ROLES[v as RoleCode].permissions.includes(p)),
+                  })
                 }
               >
                 <SelectTrigger><SelectValue /></SelectTrigger>
@@ -282,6 +304,35 @@ function UsersPage() {
                 Le gérant, le caissier et le livreur de cette boutique voient sa caisse, son stock et ses courses. L'admin n'est rattaché à aucune boutique : il voit tout.
               </p>
             </div>
+            )}
+            {extrasForRole(form.role).length > 0 && (
+              <div>
+                <Label>Permissions en plus du rôle</Label>
+                <p className="mb-2 mt-1 text-xs text-muted-foreground">
+                  Exemple : seuls les livreurs cochés « Porte un stock » peuvent être dotés. Les autres utilisent le stock boutique.
+                </p>
+                <div className="grid gap-2 rounded-md border p-3">
+                  {extrasForRole(form.role).map((g) => {
+                    const checked = form.extraPermissions.includes(g.perm);
+                    return (
+                      <label key={g.perm} className="flex cursor-pointer items-start gap-2 text-sm">
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(on) =>
+                            setForm({
+                              ...form,
+                              extraPermissions: on
+                                ? [...form.extraPermissions, g.perm]
+                                : form.extraPermissions.filter((p) => p !== g.perm),
+                            })
+                          }
+                        />
+                        <span>{g.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
             )}
           </div>
           <DialogFooter><Button onClick={save}>Enregistrer</Button></DialogFooter>
