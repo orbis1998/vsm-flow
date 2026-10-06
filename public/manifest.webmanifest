@@ -1,8 +1,10 @@
 {
   "name": "Business Suite",
-  "short_name": "BizSuite",
+  "short_name": "Business Suite",
   "description": "Commerce, stock et livraison",
+  "id": "/",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#111111",
   "theme_color": "#c41e3a",

@@ -206,14 +206,12 @@ function OrderSheet({ order, onClose }: { order: Order | null; onClose: () => vo
                               ))}
                             </SelectContent>
                           </Select>
-                          <Input
-                            type="number"
+                          <AmountInput
                             className="h-8 w-16"
-                            min={1}
-                            value={it.quantity}
-                            onChange={(e) =>
+                            value={it.quantity ? String(it.quantity) : ""}
+                            onValueChange={(raw) =>
                               setDraft((rows) =>
-                                rows.map((r, i) => (i === idx ? { ...r, quantity: Math.max(1, +e.target.value) } : r)),
+                                rows.map((r, i) => (i === idx ? { ...r, quantity: Math.max(0, Math.round(toNumber(raw))) } : r)),
                               )
                             }
                           />
@@ -423,7 +421,7 @@ function NewOrderDialog({
       toast.error(driverId ? "Variante absente du stock livreur" : "Choisissez une variante en stock");
       return;
     }
-    setLines((l) => [...l, { productId, variantId: variant.id, qty: 1 }]);
+    setLines((l) => [...l, { productId, variantId: variant.id, qty: 0 }]);
     setProductId("");
     setVariantId("");
   };
@@ -452,6 +450,10 @@ function NewOrderDialog({
           ? driverVariantQty(driverStock, driverId, p.id, variant.id)
           : variant.stock
         : 0;
+      if (!l.qty || l.qty < 1) {
+        toast.error(`${p.name} : indiquez la quantité`);
+        return;
+      }
       if (!variant || have < l.qty) {
         toast.error(`${p.name} : ${driverId ? "stock livreur" : "stock"} insuffisant`);
         return;
@@ -461,7 +463,7 @@ function NewOrderDialog({
         productId: p.id,
         variantId: variant.id,
         productName: label && label !== "Standard" ? `${p.name} (${label})` : p.name,
-        quantity: Math.max(1, Math.round(l.qty)),
+        quantity: Math.round(l.qty),
         unitPrice: p.promoPrice ?? p.salePrice,
         discount: 0,
       });
@@ -617,7 +619,7 @@ function NewOrderDialog({
                       {p?.name}
                       {v ? ` · ${variantLabel(v.options)}` : ""}
                     </span>
-                    <Input type="number" min={1} value={l.qty} className="h-8 w-16 shrink-0" onChange={(e) => setLines((ls) => ls.map((x, j) => (j === i ? { ...x, qty: Math.max(1, +e.target.value) } : x)))} />
+                    <AmountInput className="h-8 w-16 shrink-0" value={l.qty ? String(l.qty) : ""} onValueChange={(raw) => setLines((ls) => ls.map((x, j) => (j === i ? { ...x, qty: Math.max(0, Math.round(toNumber(raw))) } : x)))} />
                     <Button size="icon" variant="ghost" className="shrink-0" onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))}><Trash2 className="h-4 w-4" /></Button>
                   </div>
                 );

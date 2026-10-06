@@ -242,4 +242,10 @@ export const settingsService = {
   async updateZoneFee(id: ID, defaultFee: number) {
     await mutate({ op: "zone.fee", id, defaultFee });
   },
+  async createCommune(name: string) {
+    return mutate({ op: "commune.create", name });
+  },
+  async createZone(input: { communeId: ID; name: string; defaultFee: number }) {
+    return mutate({ op: "zone.create", input });
+  },
 };

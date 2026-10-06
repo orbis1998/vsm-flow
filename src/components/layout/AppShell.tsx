@@ -106,13 +106,13 @@ function Nav({ onNavigate }: { onNavigate?: () => void }) {
 function Brand() {
   const company = useAppState((s) => s.company);
   const navigating = useRouterState({ select: (s) => s.isLoading });
-  const subtitle = company.name && company.name !== APP_NAME ? company.name : "Commerce · Stock · Livraison";
+  const subtitle = company.name && company.name !== APP_NAME ? company.name : "";
   return (
     <div className="flex items-center gap-2.5 border-b border-sidebar-border px-5 py-4">
       <LogoMark className={cn("h-8 w-8 shrink-0 text-primary", navigating && "logo-pulse")} />
       <div className="min-w-0 leading-tight">
         <div className="truncate text-[13px] font-semibold tracking-tight text-sidebar-foreground">{APP_NAME}</div>
-        <div className="truncate text-[11px] text-sidebar-foreground/55">{subtitle}</div>
+        {subtitle ? <div className="truncate text-[11px] text-sidebar-foreground/55">{subtitle}</div> : null}
       </div>
     </div>
   );

@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useAppState } from "@/lib/app-store";
 import { productStock } from "@/lib/catalog";
+import { AmountInput, toNumber } from "@/lib/amount";
 import { dateTime, money, num } from "@/lib/format";
 import { APP_NAME } from "@/lib/brand";
 import { stockService } from "@/services";
@@ -102,12 +103,12 @@ function StockPage() {
   const [productId, setProductId] = useState("");
   const [variantId, setVariantId] = useState("");
   const [type, setType] = useState<StockMovementType>("entree");
-  const [qty, setQty] = useState(1);
+  const [qty, setQty] = useState("");
   const [note, setNote] = useState("");
   const [driverId, setDriverId] = useState("");
   const [dotProductId, setDotProductId] = useState("");
   const [dotVariantId, setDotVariantId] = useState("");
-  const [dotQty, setDotQty] = useState(1);
+  const [dotQty, setDotQty] = useState("");
   const [dotBusy, setDotBusy] = useState(false);
 
   const driverPoste = useMemo(() => {
@@ -132,7 +133,8 @@ function StockPage() {
   const activeDrivers = drivers.filter((d) => d.active);
 
   const submit = async () => {
-    if (!productId || qty <= 0) {
+    const quantity = Math.round(toNumber(qty));
+    if (!productId || quantity <= 0) {
       toast.error("Produit et quantité requis");
       return;
     }
@@ -141,16 +143,17 @@ function StockPage() {
       productId,
       variantId: variantId || undefined,
       type,
-      quantity: sign * qty,
+      quantity: sign * quantity,
       note,
     });
     toast.success("Mouvement enregistré");
-    setQty(1);
+    setQty("");
     setNote("");
   };
 
   const restock = async () => {
-    if (!driverId || !dotProductId || dotQty <= 0) {
+    const quantity = Math.round(toNumber(dotQty));
+    if (!driverId || !dotProductId || quantity <= 0) {
       toast.error("Livreur, article et quantité requis");
       return;
     }
@@ -160,10 +163,10 @@ function StockPage() {
         driverId,
         productId: dotProductId,
         variantId: dotVariantId || undefined,
-        quantity: dotQty,
+        quantity,
       });
       toast.success("Stock remis au livreur");
-      setDotQty(1);
+      setDotQty("");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Dotation impossible");
     } finally {
@@ -308,7 +311,7 @@ function StockPage() {
               )}
               <div>
                 <Label>Quantité</Label>
-                <Input type="number" min={1} value={dotQty} onChange={(e) => setDotQty(+e.target.value)} />
+                <AmountInput value={dotQty} onValueChange={setDotQty} />
               </div>
               <Button onClick={() => void restock()} className="w-fit" disabled={dotBusy}>
                 {dotBusy ? "Envoi…" : "Remettre le stock"}
@@ -400,7 +403,7 @@ function StockPage() {
               </div>
               <div>
                 <Label>Quantité</Label>
-                <Input type="number" min={1} value={qty} onChange={(e) => setQty(+e.target.value)} />
+                <AmountInput value={qty} onValueChange={setQty} />
               </div>
             </div>
             <div>

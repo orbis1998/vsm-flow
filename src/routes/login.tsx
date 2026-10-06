@@ -8,7 +8,7 @@ import { getAppStateFn } from "@/fn/app";
 import { APP_STATE_KEY } from "@/lib/app-state";
 import { saveSession } from "@/lib/session";
 import { useQueryClient } from "@tanstack/react-query";
-import { APP_NAME, APP_TAGLINE } from "@/lib/brand";
+import { APP_NAME } from "@/lib/brand";
 import { homePath } from "@/lib/roles";
 import type { RoleCode } from "@/types";
 import { Button } from "@/components/ui/button";
@@ -75,7 +75,6 @@ function LoginPage() {
         <div className="mb-8 text-center">
           <LogoMark className="mx-auto mb-3 h-12 w-12 text-primary" />
           <h1 className="text-2xl font-bold tracking-tight">{APP_NAME}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{APP_TAGLINE}</p>
         </div>
         <form onSubmit={submit} className="space-y-3 rounded-lg border bg-card p-4">
           <div>
@@ -117,9 +116,6 @@ function LoginPage() {
             Installer l'application
           </Button>
         )}
-        <p className="mt-4 text-center text-xs text-muted-foreground">
-          Sur mobile : menu du navigateur → « Ajouter à l'écran d'accueil ».
-        </p>
       </div>
     </div>
   );

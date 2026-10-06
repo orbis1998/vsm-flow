@@ -17,6 +17,8 @@ import type {
   StockMovementType,
   Supplier,
   User,
+  Commune,
+  DeliveryZone,
 } from "@/types";
 
 type Client = PoolClient;
@@ -1357,6 +1359,43 @@ export async function removePoste(client: Client, id: ID): Promise<void> {
 
 export async function updateZoneFee(client: Client, id: ID, defaultFee: number): Promise<void> {
   await client.query("update delivery_zones set default_fee = $2 where id = $1", [id, defaultFee]);
+}
+
+export async function createCommune(client: Client, name: string): Promise<Commune> {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error("Nom de commune requis.");
+  const existing = await client.query("select id, name from communes where lower(name) = lower($1)", [trimmed]);
+  if (existing.rows[0]) {
+    return { id: String(existing.rows[0].id), name: String(existing.rows[0].name) };
+  }
+  const id = nextId("com");
+  await client.query("insert into communes (id, name) values ($1,$2)", [id, trimmed]);
+  await audit(client, "Création commune", "Commune", trimmed);
+  return { id, name: trimmed };
+}
+
+export async function createZone(
+  client: Client,
+  input: { communeId: ID; name: string; defaultFee: number },
+): Promise<DeliveryZone> {
+  const name = input.name.trim();
+  if (!input.communeId) throw new Error("Choisissez une commune.");
+  if (!name) throw new Error("Nom de quartier / zone requis.");
+  const commune = await client.query("select id from communes where id = $1", [input.communeId]);
+  if (!commune.rows[0]) throw new Error("Commune introuvable.");
+  const dup = await client.query(
+    "select id from delivery_zones where commune_id = $1 and lower(name) = lower($2)",
+    [input.communeId, name],
+  );
+  if (dup.rows[0]) throw new Error("Cette zone existe déjà pour la commune.");
+  const id = nextId("zon");
+  const defaultFee = Math.max(0, Number(input.defaultFee) || 0);
+  await client.query(
+    "insert into delivery_zones (id, commune_id, name, default_fee) values ($1,$2,$3,$4)",
+    [id, input.communeId, name, defaultFee],
+  );
+  await audit(client, "Création zone livraison", "DeliveryZone", name);
+  return { id, communeId: input.communeId, name, defaultFee };
 }
 
 export async function collectOrderPayment(

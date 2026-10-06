@@ -48,31 +48,17 @@ function inBar(x, y, size, x0, y0, w, h, r) {
   return corners.some(([cx, cy]) => (lx - cx) ** 2 + (ly - cy) ** 2 <= r ** 2);
 }
 
-function makePng(size) {
-  const raw = Buffer.alloc((size * 4 + 1) * size);
-  const radius = Math.round(size * (7 / 32));
+function paintBars(raw, size, rgb, alphas) {
   const bars = [
-    { x: 7 / 32, y: 8 / 32, w: 18 / 32, h: 3.2 / 32, a: 255 },
-    { x: 7 / 32, y: 14.4 / 32, w: 18 / 32, h: 3.2 / 32, a: 217 },
-    { x: 7 / 32, y: 20.8 / 32, w: 12 / 32, h: 3.2 / 32, a: 255 },
+    { x: 7 / 32, y: 8 / 32, w: 18 / 32, h: 3.2 / 32, a: alphas[0] },
+    { x: 7 / 32, y: 14.4 / 32, w: 18 / 32, h: 3.2 / 32, a: alphas[1] },
+    { x: 7 / 32, y: 20.8 / 32, w: 12 / 32, h: 3.2 / 32, a: alphas[2] },
   ];
   const br = Math.max(1, Math.round(size * (1 / 32)));
   for (let y = 0; y < size; y++) {
     const row = y * (size * 4 + 1);
-    raw[row] = 0;
     for (let x = 0; x < size; x++) {
       const i = row + 1 + x * 4;
-      if (!inRoundRect(x, y, size, radius)) {
-        raw[i] = 0;
-        raw[i + 1] = 0;
-        raw[i + 2] = 0;
-        raw[i + 3] = 0;
-        continue;
-      }
-      let r = 0xc4;
-      let g = 0x1e;
-      let b = 0x3a;
-      let a = 255;
       for (const bar of bars) {
         if (
           inBar(
@@ -86,18 +72,50 @@ function makePng(size) {
             br,
           )
         ) {
-          r = 255;
-          g = 255;
-          b = 255;
-          a = bar.a;
+          raw[i] = rgb[0];
+          raw[i + 1] = rgb[1];
+          raw[i + 2] = rgb[2];
+          raw[i + 3] = bar.a;
         }
       }
-      raw[i] = r;
-      raw[i + 1] = g;
-      raw[i + 2] = b;
-      raw[i + 3] = a;
     }
   }
+}
+
+function makePng(size) {
+  const raw = Buffer.alloc((size * 4 + 1) * size);
+  const radius = Math.round(size * (7 / 32));
+  for (let y = 0; y < size; y++) {
+    const row = y * (size * 4 + 1);
+    raw[row] = 0;
+    for (let x = 0; x < size; x++) {
+      const i = row + 1 + x * 4;
+      if (!inRoundRect(x, y, size, radius)) {
+        raw[i] = 0;
+        raw[i + 1] = 0;
+        raw[i + 2] = 0;
+        raw[i + 3] = 0;
+        continue;
+      }
+      raw[i] = 0xc4;
+      raw[i + 1] = 0x1e;
+      raw[i + 2] = 0x3a;
+      raw[i + 3] = 255;
+    }
+  }
+  paintBars(raw, size, [255, 255, 255], [255, 217, 255]);
+  return encodePng(raw, size);
+}
+
+/** Badge Android : blanc sur transparent (sinon le logo couleur devient un carré blanc). */
+function makeBadge(size) {
+  const raw = Buffer.alloc((size * 4 + 1) * size);
+  for (let y = 0; y < size; y++) raw[y * (size * 4 + 1)] = 0;
+  paintBars(raw, size, [255, 255, 255], [255, 255, 255]);
+  return encodePng(raw, size);
+}
+
+function encodePng(raw, size) {
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(size, 0);
   ihdr.writeUInt32BE(size, 4);
@@ -137,9 +155,10 @@ const png32 = makePng(32);
 const png48 = makePng(48);
 fs.writeFileSync(path.join(dir, "icon-192.png"), makePng(192));
 fs.writeFileSync(path.join(dir, "icon-96.png"), makePng(96));
+fs.writeFileSync(path.join(dir, "badge-96.png"), makeBadge(96));
 fs.writeFileSync(path.join(dir, "favicon.ico"), makeIco([
   { size: 16, data: png16 },
   { size: 32, data: png32 },
   { size: 48, data: png48 },
 ]));
-console.log("wrote public/icon-192.png, public/icon-96.png and public/favicon.ico");
+console.log("wrote public/icon-192.png, public/icon-96.png, public/badge-96.png and public/favicon.ico");

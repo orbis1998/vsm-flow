@@ -6,6 +6,7 @@ import { settingsService } from "@/services";
 import { useSession } from "@/hooks/useSession";
 import { APP_NAME } from "@/lib/brand";
 import { moneyCdf } from "@/lib/format";
+import { AmountInput, toNumber } from "@/lib/amount";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,6 +34,9 @@ function SettingsPage() {
   const zones = useAppState((s) => s.zones);
   const [form, setForm] = useState(company);
   const [poste, setPoste] = useState({ name: "", address: "", type: "boutique" as Poste["type"] });
+  const [newCommune, setNewCommune] = useState("");
+  const [zoneForm, setZoneForm] = useState({ communeId: communes[0]?.id ?? "", name: "", fee: "" });
+  const [zoneBusy, setZoneBusy] = useState(false);
   if (!can("settings.view")) return <Forbidden />;
 
   return (
@@ -65,10 +69,9 @@ function SettingsPage() {
           </div>
           <div>
             <Label>Taux USD → CDF</Label>
-            <Input
-              type="number"
-              value={form.usdCdfRate}
-              onChange={(e) => setForm({ ...form, usdCdfRate: +e.target.value })}
+            <AmountInput
+              value={form.usdCdfRate ? String(form.usdCdfRate) : ""}
+              onValueChange={(raw) => setForm({ ...form, usdCdfRate: toNumber(raw) })}
               disabled={!can("settings.manage")}
             />
             <p className="mt-1 text-xs text-muted-foreground">1 $ = {form.usdCdfRate} CDF. Les articles sont en USD, les frais de livraison en CDF.</p>
@@ -168,6 +171,83 @@ function SettingsPage() {
           <p className="mb-3 text-sm text-muted-foreground">
             Frais toujours en CDF, hors chiffre d'affaires. {communes.length} communes.
           </p>
+          {can("settings.manage") && (
+            <div className="mb-4 grid gap-2 rounded-md border p-3 sm:grid-cols-2 lg:grid-cols-5">
+              <div className="sm:col-span-2 lg:col-span-1">
+                <Label>Commune</Label>
+                <Select
+                  value={zoneForm.communeId || undefined}
+                  onValueChange={(v) => setZoneForm((f) => ({ ...f, communeId: v }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choisir" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {communes.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Nouvelle commune</Label>
+                <Input
+                  placeholder="Si absente de la liste"
+                  value={newCommune}
+                  onChange={(e) => setNewCommune(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label>Quartier / zone</Label>
+                <Input
+                  placeholder="Ex. Victoire"
+                  value={zoneForm.name}
+                  onChange={(e) => setZoneForm((f) => ({ ...f, name: e.target.value }))}
+                />
+              </div>
+              <div>
+                <Label>Frais CDF</Label>
+                <AmountInput
+                  value={zoneForm.fee}
+                  onValueChange={(fee) => setZoneForm((f) => ({ ...f, fee }))}
+                />
+              </div>
+              <div className="flex items-end">
+                <Button
+                  className="w-full"
+                  disabled={zoneBusy}
+                  onClick={async () => {
+                    if (!zoneForm.name.trim()) return toast.error("Nom de zone requis");
+                    setZoneBusy(true);
+                    try {
+                      let communeId = zoneForm.communeId;
+                      if (newCommune.trim()) {
+                        const created = (await settingsService.createCommune(newCommune)) as { id: string };
+                        communeId = created.id;
+                      }
+                      if (!communeId) return toast.error("Choisissez ou créez une commune");
+                      await settingsService.createZone({
+                        communeId,
+                        name: zoneForm.name,
+                        defaultFee: toNumber(zoneForm.fee),
+                      });
+                      toast.success("Zone ajoutée");
+                      setZoneForm({ communeId, name: "", fee: "" });
+                      setNewCommune("");
+                    } catch (error) {
+                      toast.error(error instanceof Error ? error.message : "Ajout impossible");
+                    } finally {
+                      setZoneBusy(false);
+                    }
+                  }}
+                >
+                  {zoneBusy ? "Ajout…" : "Ajouter"}
+                </Button>
+              </div>
+            </div>
+          )}
           <div className="max-h-[70dvh] overflow-auto rounded-md border">
             <Table>
               <TableHeader>
@@ -186,10 +266,11 @@ function SettingsPage() {
                       {can("settings.manage") ? (
                         <Input
                           className="ml-auto h-8 w-24 text-right"
-                          type="number"
-                          defaultValue={z.defaultFee}
+                          type="text"
+                          inputMode="decimal"
+                          defaultValue={z.defaultFee ? String(z.defaultFee) : ""}
                           onBlur={async (e) => {
-                            const n = Number(e.target.value);
+                            const n = toNumber(e.target.value);
                             if (n === z.defaultFee) return;
                             await settingsService.updateZoneFee(z.id, n);
                             toast.success(`${z.name} : ${moneyCdf(n)}`);

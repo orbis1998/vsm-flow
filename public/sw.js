@@ -1,3 +1,5 @@
+const APP_NAME = "Business Suite";
+
 self.addEventListener("install", (event) => {
   event.waitUntil(self.skipWaiting());
 });
@@ -14,22 +16,24 @@ self.addEventListener("fetch", (event) => {
 });
 
 self.addEventListener("push", (event) => {
-  let data = { title: "Business Suite", body: "Nouvelle activité", href: "/" };
+  let data = { title: "", body: "Nouvelle activité", href: "/" };
   try {
     if (event.data) data = { ...data, ...event.data.json() };
   } catch {
     // ignore
   }
+  const eventTitle = typeof data.title === "string" ? data.title.trim() : "";
+  const eventBody = typeof data.body === "string" ? data.body.trim() : "";
+  const lines = [eventTitle && eventTitle !== APP_NAME ? eventTitle : "", eventBody].filter(Boolean);
   event.waitUntil(
-    self.registration.showNotification(data.title, {
-      body: data.body,
-      icon: "/icon-192.png",
-      badge: "/icon-96.png",
-      vibrate: [200, 100, 200, 100, 200],
+    self.registration.showNotification(APP_NAME, {
+      body: lines.join("\n") || "Nouvelle activité",
+      icon: `${self.location.origin}/icon-192.png`,
+      vibrate: [200, 100, 200],
       requireInteraction: true,
       renotify: true,
       silent: false,
-      tag: data.tag || data.href || "vsm-flow",
+      tag: "vsm-flow",
       timestamp: Date.now(),
       data: { href: data.href || "/commandes" },
     }),

@@ -11,14 +11,16 @@ type AmountProps = Omit<ComponentProps<typeof Input>, "value" | "onChange" | "ty
   onValueChange: (raw: string) => void;
 };
 
-export function AmountInput({ value, onValueChange, ...props }: AmountProps) {
+export function AmountInput({ value, onValueChange, placeholder = "—", ...props }: AmountProps) {
   return (
     <Input
-      type="number"
-      inputMode="decimal"
-      value={value}
-      onChange={(e) => onValueChange(e.target.value)}
       {...props}
+      type="text"
+      inputMode="decimal"
+      autoComplete="off"
+      placeholder={placeholder}
+      value={value}
+      onChange={(e) => onValueChange(e.target.value.replace(/[^\d.,]/g, ""))}
     />
   );
 }

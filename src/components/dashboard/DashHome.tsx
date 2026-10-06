@@ -88,7 +88,7 @@ function AnimatedUsd({ amount }: { amount: number }) {
 }
 
 export function DashHome() {
-  const { user, role, posteId } = useSession();
+  const { role, posteId } = useSession();
   const company = useAppState((s) => s.company);
   const ordersAll = useAppState((s) => s.orders);
   const salesAll = useAppState((s) => s.sales);
@@ -148,8 +148,7 @@ export function DashHome() {
     <div className="dash">
       <header className="dash-hero">
         <div className="min-w-0">
-          <p className="dash-hero__kicker">{boutique ? boutique.name : "Vue globale"}</p>
-          <h1 className="dash-hero__title">Bonjour, {user.fullName.split(" ")[0] || user.badge}</h1>
+          {boutique ? <p className="dash-hero__kicker">{boutique.name}</p> : null}
           <p className="dash-hero__meta">
             <Clock />
             <span aria-hidden>·</span>

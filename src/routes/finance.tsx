@@ -7,6 +7,7 @@ import { APP_NAME } from "@/lib/brand";
 import { financeService } from "@/services";
 import { useSession } from "@/hooks/useSession";
 import { Button } from "@/components/ui/button";
+import { AmountInput, toNumber } from "@/lib/amount";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -37,7 +38,7 @@ function FinancePage() {
   const transactions = useAppState((s) => s.transactions);
   const cashSessions = useAppState((s) => s.cashSessions);
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ label: "", category: "divers" as ExpenseCategory, amount: 0 });
+  const [form, setForm] = useState({ label: "", category: "divers" as ExpenseCategory, amount: "" });
   if (!can("finance.view")) return <Forbidden />;
 
   const delivered = orders.filter((o) => o.status === "livree");
@@ -148,13 +149,15 @@ function FinancePage() {
                 <SelectContent>{EXPENSE_CATS.map((c) => <SelectItem key={c} value={c}>{EXPENSE_LABEL[c]}</SelectItem>)}</SelectContent>
               </Select>
             </div>
-            <div><Label>Montant (USD)</Label><Input type="number" value={form.amount} onChange={(e) => setForm({ ...form, amount: +e.target.value })} /></div>
+            <div><Label>Montant (USD)</Label><AmountInput value={form.amount} onValueChange={(amount) => setForm({ ...form, amount })} /></div>
           </div>
           <DialogFooter>
             <Button onClick={async () => {
-              if (!form.label || form.amount <= 0) { toast.error("Libellé et montant requis"); return; }
-              await financeService.addExpense(form);
+              const amount = toNumber(form.amount);
+              if (!form.label || amount <= 0) { toast.error("Libellé et montant requis"); return; }
+              await financeService.addExpense({ ...form, amount });
               toast.success("Dépense enregistrée");
+              setForm({ label: "", category: "divers", amount: "" });
               setOpen(false);
             }}>Enregistrer</Button>
           </DialogFooter>

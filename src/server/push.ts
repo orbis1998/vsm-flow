@@ -32,7 +32,6 @@ export async function sendWebPush(
     title: payload.title,
     body: payload.body,
     href,
-    tag: href,
   });
   for (const row of subs.rows) {
     try {

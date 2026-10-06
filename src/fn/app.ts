@@ -83,6 +83,8 @@ export type AppMutation =
   | { op: "poste.update"; id: ID; patch: { name?: string; address?: string; type?: "boutique" | "entrepot" | "mobile" } }
   | { op: "poste.remove"; id: ID }
   | { op: "zone.fee"; id: ID; defaultFee: number }
+  | { op: "commune.create"; name: string }
+  | { op: "zone.create"; input: { communeId: ID; name: string; defaultFee: number } }
   | { op: "order.collect"; id: ID; receivedUsd: number; receivedCdf: number }
   | { op: "order.items"; id: ID; items: Array<Omit<OrderItem, "id">> };
 
@@ -217,6 +219,10 @@ export const mutateAppFn = createServerFn({ method: "POST", strict: false })
         case "zone.fee":
           await m.updateZoneFee(client, data.id, data.defaultFee);
           return null;
+        case "commune.create":
+          return m.createCommune(client, data.name);
+        case "zone.create":
+          return m.createZone(client, data.input);
         case "order.collect":
           await m.collectOrderPayment(client, data.id, data.receivedUsd, data.receivedCdf);
           return null;

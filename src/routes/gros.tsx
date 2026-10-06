@@ -47,7 +47,7 @@ function WholesalePage() {
   const [customer, setCustomer] = useState("Client gros");
   const [productId, setProductId] = useState("");
   const [variantId, setVariantId] = useState("");
-  const [pieces, setPieces] = useState("1");
+  const [pieces, setPieces] = useState("");
   const [unitPrice, setUnitPrice] = useState("");
   const [discount, setDiscount] = useState("");
   const [receivedUsd, setReceivedUsd] = useState("");
@@ -71,10 +71,14 @@ function WholesalePage() {
       return;
     }
     const variant = selected.variants.find((v) => v.id === (variantId || variants[0]?.id));
-    const qty = Math.max(1, Math.round(toNumber(pieces)));
+    const qty = Math.round(toNumber(pieces));
     const price = toNumber(unitPrice);
     if (!variant) {
       toast.error("Choisissez une variante en stock");
+      return;
+    }
+    if (qty <= 0) {
+      toast.error("Indiquez le nombre de pièces");
       return;
     }
     if (price <= 0) {
