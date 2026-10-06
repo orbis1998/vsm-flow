@@ -42,6 +42,7 @@ export type SaleCreateInput = {
   discount: number;
   receivedUsd?: number;
   receivedCdf?: number;
+  kind?: Sale["kind"];
   items: Array<Omit<SaleItem, "id">>;
 };
 

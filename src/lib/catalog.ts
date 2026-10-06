@@ -1,7 +1,29 @@
-import type { Product } from "@/types";
+import type { DriverStockLine, Product } from "@/types";
 
 export function productStock(p: Product): number {
   return p.variants.reduce((sum, v) => sum + v.stock, 0);
+}
+
+export function driverVariantQty(
+  lines: DriverStockLine[],
+  driverId: string,
+  productId: string,
+  variantId?: string,
+): number {
+  return lines
+    .filter(
+      (l) =>
+        l.driverId === driverId &&
+        l.productId === productId &&
+        (l.variantId ?? "") === (variantId ?? ""),
+    )
+    .reduce((sum, l) => sum + l.quantity, 0);
+}
+
+export function driverProductQty(lines: DriverStockLine[], driverId: string, productId: string): number {
+  return lines
+    .filter((l) => l.driverId === driverId && l.productId === productId)
+    .reduce((sum, l) => sum + l.quantity, 0);
 }
 
 export function productInStock(p: Product): boolean {

@@ -13,6 +13,7 @@ import type {
   Product,
   Sale,
   SaleItem,
+  SaleKind,
   StockMovementType,
   Supplier,
   User,
@@ -412,6 +413,71 @@ async function consumeDriverStock(
   return quantity - take;
 }
 
+async function creditDriverStock(
+  client: Client,
+  driverId: string,
+  productId: string,
+  variantId: string | undefined,
+  quantity: number,
+): Promise<void> {
+  if (quantity <= 0) return;
+  const existing = await client.query(
+    `select id from driver_stock
+     where driver_id = $1 and product_id = $2
+       and coalesce(variant_id, '') = coalesce($3, '')`,
+    [driverId, productId, variantId ?? ""],
+  );
+  if (existing.rows[0]) {
+    await client.query(
+      "update driver_stock set quantity = quantity + $2, updated_at = now() where id = $1",
+      [existing.rows[0].id, quantity],
+    );
+    return;
+  }
+  await client.query(
+    `insert into driver_stock (id, driver_id, product_id, variant_id, quantity, updated_at)
+     values ($1,$2,$3,$4,$5, now())`,
+    [nextId("dst"), driverId, productId, variantId ?? null, quantity],
+  );
+}
+
+async function takeDriverOrderItems(
+  client: Client,
+  driverId: string,
+  items: Array<{ product_id: unknown; variant_id: unknown; quantity: unknown; product_name?: unknown }>,
+): Promise<void> {
+  for (const it of items) {
+    const qty = Number(it.quantity);
+    const leftover = await consumeDriverStock(
+      client,
+      driverId,
+      String(it.product_id),
+      it.variant_id ? String(it.variant_id) : undefined,
+      qty,
+    );
+    if (leftover > 0) {
+      const name = String(it.product_name || "Article");
+      throw new Error(`${name} : stock livreur insuffisant (${qty - leftover} dispo, ${qty} demandé).`);
+    }
+  }
+}
+
+async function restoreDriverOrderItems(
+  client: Client,
+  driverId: string,
+  items: Array<{ product_id: unknown; variant_id: unknown; quantity: unknown }>,
+): Promise<void> {
+  for (const it of items) {
+    await creditDriverStock(
+      client,
+      driverId,
+      String(it.product_id),
+      it.variant_id ? String(it.variant_id) : undefined,
+      Number(it.quantity),
+    );
+  }
+}
+
 /* -------------------------------- Commandes -------------------------------- */
 
 export type OrderCreateInput = {
@@ -446,12 +512,15 @@ export async function createOrder(client: Client, input: OrderCreateInput): Prom
     const found = await client.query("select id from customers where id = $1", [customerId]);
     if (!found.rows[0]) customerId = null;
   }
-  for (const it of input.items) {
-    if (!it.variantId) throw new Error(`Stock indisponible pour ${it.productName}`);
-    const stock = await client.query("select stock from product_variants where id = $1", [it.variantId]);
-    const available = Number(stock.rows[0]?.stock ?? 0);
-    if (available < it.quantity) {
-      throw new Error(`${it.productName} : stock insuffisant (${available} restant).`);
+  const assigned = input.driverId ? await resolveDriver(client, input.driverId) : null;
+  if (!assigned) {
+    for (const it of input.items) {
+      if (!it.variantId) throw new Error(`Stock indisponible pour ${it.productName}`);
+      const stock = await client.query("select stock from product_variants where id = $1", [it.variantId]);
+      const available = Number(stock.rows[0]?.stock ?? 0);
+      if (available < it.quantity) {
+        throw new Error(`${it.productName} : stock insuffisant (${available} restant).`);
+      }
     }
   }
   const id = nextId("ord");
@@ -468,7 +537,6 @@ export async function createOrder(client: Client, input: OrderCreateInput): Prom
   const reference = `CMD-${new Date().getFullYear()}-${id.replace(/\W/g, "").slice(-8).toUpperCase()}`;
   const evtId = nextId("evt");
   const customerName = (input.customerName ?? "").trim() || "Client";
-  const assigned = input.driverId ? await resolveDriver(client, input.driverId) : null;
   const status: OrderStatus = assigned ? "assignee" : "nouvelle";
   const createdNote = assigned ? `Commande enregistrée · ${assigned.fullName}` : "Commande enregistrée";
   const deliveryFee = Number(input.deliveryFee) || 0;
@@ -510,6 +578,18 @@ export async function createOrder(client: Client, input: OrderCreateInput): Prom
      values ($1,$2,$3,$4,$5,$6)`,
     [evtId, id, status, createdNote, who.fullName, createdAt],
   );
+  if (assigned) {
+    await takeDriverOrderItems(
+      client,
+      assigned.id,
+      items.map((it) => ({
+        product_id: it.productId,
+        variant_id: it.variantId,
+        quantity: it.quantity,
+        product_name: it.productName,
+      })),
+    );
+  }
   await audit(client, "Création commande", "Order", reference);
   const ping = {
     title: `Nouvelle commande ${reference}`,
@@ -572,23 +652,23 @@ export async function updateOrderStatus(
     try {
       await client.query("savepoint after_status");
       const items = await client.query("select * from order_items where order_id = $1", [id]);
-      for (const it of items.rows) {
-        const qty = Number(it.quantity);
-        const leftover = order.driver_id
-          ? await consumeDriverStock(
-              client,
-              String(order.driver_id),
-              String(it.product_id),
-              it.variant_id ? String(it.variant_id) : undefined,
-              qty,
-            )
-          : qty;
-        if (leftover > 0) {
+      if (order.driver_id) {
+        for (const it of items.rows) {
+          await consumeDriverStock(
+            client,
+            String(order.driver_id),
+            String(it.product_id),
+            it.variant_id ? String(it.variant_id) : undefined,
+            Number(it.quantity),
+          );
+        }
+      } else {
+        for (const it of items.rows) {
           await adjustVariantStock(
             client,
             it.variant_id ? String(it.variant_id) : undefined,
             String(it.product_id),
-            leftover,
+            Number(it.quantity),
             "sortie",
             who.id,
             `Livraison ${order.reference}`,
@@ -628,6 +708,13 @@ export async function updateOrderStatus(
     livree: "livrée",
     echec: "en échec",
   };
+  if ((status === "annulee" || status === "retour") && !["annulee", "retour"].includes(String(order.status))) {
+    const driverId = order.driver_id ? String(order.driver_id) : null;
+    if (driverId && ["assignee", "en_livraison", "livree"].includes(String(order.status))) {
+      const held = await client.query("select * from order_items where order_id = $1", [id]);
+      await restoreDriverOrderItems(client, driverId, held.rows);
+    }
+  }
   if (labels[status]) {
     await pingManagers(client, {
       title: `Commande ${order.reference} ${labels[status]}`,
@@ -686,9 +773,21 @@ async function resolveDriver(
 export async function assignDriver(client: Client, id: ID, driverId: ID): Promise<void> {
   const who = await actor(client);
   const driver = await resolveDriver(client, driverId);
-  const current = await client.query("select status, reference, customer_name from orders where id = $1", [id]);
+  const current = await client.query(
+    "select status, reference, customer_name, driver_id from orders where id = $1",
+    [id],
+  );
   if (!current.rows[0]) throw new Error("Commande introuvable.");
-  const status = current.rows[0].status === "livree" ? "livree" : "assignee";
+  const prevDriverId = current.rows[0].driver_id ? String(current.rows[0].driver_id) : null;
+  const alreadyDelivered = current.rows[0].status === "livree";
+  const status = alreadyDelivered ? "livree" : "assignee";
+  const items = await client.query("select * from order_items where order_id = $1", [id]);
+  if (!alreadyDelivered && prevDriverId && prevDriverId !== driver.id) {
+    await restoreDriverOrderItems(client, prevDriverId, items.rows);
+  }
+  if (!alreadyDelivered && prevDriverId !== driver.id) {
+    await takeDriverOrderItems(client, driver.id, items.rows);
+  }
   await client.query("update orders set driver_id = $2, status = $3 where id = $1", [id, driver.id, status]);
   await client.query(
     `insert into order_events (id, order_id, status, note, user_name, created_at)
@@ -748,7 +847,11 @@ export async function replaceOrderItems(
   if (!order) return;
   const oldItems = await client.query("select * from order_items where order_id = $1", [id]);
   const delivered = order.status === "livree";
-  if (delivered) {
+  const driverId = order.driver_id ? String(order.driver_id) : null;
+  const driverHeld = Boolean(driverId && ["assignee", "en_livraison", "livree"].includes(String(order.status)));
+  if (driverHeld && driverId) {
+    await restoreDriverOrderItems(client, driverId, oldItems.rows);
+  } else if (delivered) {
     for (const it of oldItems.rows) {
       await adjustVariantStock(
         client,
@@ -770,7 +873,7 @@ export async function replaceOrderItems(
        values ($1,$2,$3,$4,$5,$6,$7,$8)`,
       [it.id, id, it.productId, it.variantId ?? null, it.productName, it.quantity, it.unitPrice, it.discount],
     );
-    if (delivered) {
+    if (!driverHeld && delivered) {
       await adjustVariantStock(
         client,
         it.variantId,
@@ -782,6 +885,18 @@ export async function replaceOrderItems(
         String(order.reference),
       );
     }
+  }
+  if (driverHeld && driverId) {
+    await takeDriverOrderItems(
+      client,
+      driverId,
+      nextItems.map((it) => ({
+        product_id: it.productId,
+        variant_id: it.variantId,
+        quantity: it.quantity,
+        product_name: it.productName,
+      })),
+    );
   }
   const productsTotal = Math.round(nextItems.reduce((s, it) => s + it.unitPrice * it.quantity - it.discount, 0) * 100) / 100;
   await client.query("update orders set products_total = $2, total_to_collect = $2 where id = $1", [id, productsTotal]);
@@ -800,6 +915,32 @@ export async function replaceOrderItems(
 }
 
 export async function removeOrder(client: Client, id: ID): Promise<void> {
+  const current = await client.query("select * from orders where id = $1", [id]);
+  const order = current.rows[0];
+  if (!order) return;
+  const items = await client.query("select * from order_items where order_id = $1", [id]);
+  const who = await actor(client);
+  const driverId = order.driver_id ? String(order.driver_id) : null;
+  const driverHeld = driverId && ["assignee", "en_livraison", "livree"].includes(String(order.status));
+  if (driverHeld) {
+    await restoreDriverOrderItems(client, driverId, items.rows);
+  } else if (order.status === "livree") {
+    for (const it of items.rows) {
+      await adjustVariantStock(
+        client,
+        it.variant_id ? String(it.variant_id) : undefined,
+        String(it.product_id),
+        Number(it.quantity),
+        "entree",
+        who.id,
+        `Annulation ${order.reference}`,
+        String(order.reference),
+      );
+    }
+  }
+  await client.query("delete from order_events where order_id = $1", [id]);
+  await client.query("delete from order_items where order_id = $1", [id]);
+  await client.query("delete from deliveries where order_id = $1", [id]);
   await client.query("delete from orders where id = $1", [id]);
   await audit(client, "Suppression commande", "Order", id);
 }
@@ -813,26 +954,45 @@ export type SaleCreateInput = {
   discount: number;
   receivedUsd?: number;
   receivedCdf?: number;
+  kind?: SaleKind;
   items: Array<Omit<SaleItem, "id">>;
 };
 
 export async function createSale(client: Client, input: SaleCreateInput): Promise<Sale> {
   const who = await actor(client);
+  const kind: SaleKind = input.kind === "gros" ? "gros" : "comptoir";
   const count = await client.query("select count(*)::int as n from sales");
   const n = Number(count.rows[0]?.n ?? 0);
   const id = nextId("ven");
   const createdAt = nowIso();
-  const items: SaleItem[] = input.items.map((it, i) => ({ ...it, id: nextId(`sit${i}`) }));
+  const items: SaleItem[] = input.items.map((it, i) => ({
+    ...it,
+    id: nextId(`sit${i}`),
+    quantity: Math.max(1, Math.round(Number(it.quantity) || 0)),
+    unitPrice: Number(it.unitPrice) || 0,
+    discount: Number(it.discount) || 0,
+  }));
+  if (!items.length) throw new Error("Ajoutez au moins un article.");
+  for (const it of items) {
+    if (!it.variantId) throw new Error(`Choisissez une variante pour ${it.productName}`);
+    const stock = await client.query("select stock from product_variants where id = $1", [it.variantId]);
+    const available = Number(stock.rows[0]?.stock ?? 0);
+    if (available < it.quantity) {
+      throw new Error(`${it.productName} : stock boutique insuffisant (${available} restant).`);
+    }
+  }
   const subtotal = Math.round(items.reduce((s, it) => s + it.unitPrice * it.quantity - it.discount, 0) * 100) / 100;
   const total = Math.round((subtotal - input.discount) * 100) / 100;
-  const reference = `POS-${new Date().getFullYear()}-${2000 + n + 1}`;
+  const prefix = kind === "gros" ? "GROS" : "POS";
+  const reference = `${prefix}-${new Date().getFullYear()}-${2000 + n + 1}`;
   const receivedUsd = input.receivedUsd ?? total;
   const receivedCdf = input.receivedCdf ?? 0;
+  const saleLabel = kind === "gros" ? "Vente gros" : "Vente POS";
 
   await client.query(
-    `insert into sales (id, reference, poste_id, user_id, user_name, customer_id, customer_name, subtotal, discount, total, received_usd, received_cdf, created_at)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-    [id, reference, input.posteId, who.id, who.fullName, input.customerId ?? null, input.customerName, subtotal, input.discount, total, receivedUsd, receivedCdf, createdAt],
+    `insert into sales (id, reference, poste_id, user_id, user_name, customer_id, customer_name, subtotal, discount, total, received_usd, received_cdf, created_at, kind)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+    [id, reference, input.posteId, who.id, who.fullName, input.customerId ?? null, input.customerName, subtotal, input.discount, total, receivedUsd, receivedCdf, createdAt, kind],
   );
   for (const it of items) {
     await client.query(
@@ -841,23 +1001,26 @@ export async function createSale(client: Client, input: SaleCreateInput): Promis
       [it.id, id, it.productId, it.variantId ?? null, it.productName, it.quantity, it.unitPrice, it.discount],
     );
     if (it.variantId) {
-      await client.query(
-        "update product_variants set stock = greatest(0, stock - $2), sold = sold + $2 where id = $1",
+      const updated = await client.query(
+        "update product_variants set stock = stock - $2, sold = sold + $2 where id = $1 and stock >= $2",
         [it.variantId, it.quantity],
       );
+      if (!updated.rowCount) {
+        throw new Error(`${it.productName} : stock boutique insuffisant.`);
+      }
     }
     await client.query(
       `insert into stock_movements (id, reference, product_id, variant_id, quantity, type, user_id, note, created_at)
        values ($1,$2,$3,$4,$5,'sortie',$6,$7,$8)`,
-      [nextId("mvt"), reference, it.productId, it.variantId ?? null, -it.quantity, who.id, `Vente POS ${reference}`, createdAt],
+      [nextId("mvt"), reference, it.productId, it.variantId ?? null, -it.quantity, who.id, `${saleLabel} ${reference}`, createdAt],
     );
   }
   await client.query(
     `insert into financial_transactions (id, reference, type, label, amount, direction, created_at)
      values ($1,$2,'vente',$3,$4,'entree',$5)`,
-    [nextId("trx"), reference, `Vente POS — ${input.customerName}`, total, createdAt],
+    [nextId("trx"), reference, `${saleLabel} — ${input.customerName}`, total, createdAt],
   );
-  await audit(client, "Vente POS enregistrée", "Sale", reference);
+  await audit(client, `${saleLabel} enregistrée`, "Sale", reference);
   return {
     id,
     reference,
@@ -872,6 +1035,7 @@ export async function createSale(client: Client, input: SaleCreateInput): Promis
     receivedUsd,
     receivedCdf,
     createdAt,
+    kind,
     ...(input.customerId ? { customerId: input.customerId } : {}),
   };
 }

@@ -27,11 +27,8 @@ export function AppDataGate({ children }: { children: ReactNode }) {
 
   if (isPending && !data) {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-background px-4">
-        <div className="text-center">
-          <LogoMark className="logo-pulse mx-auto mb-4 h-12 w-12 text-primary" />
-          <p className="text-sm font-medium text-foreground">Chargement…</p>
-        </div>
+      <div className="flex min-h-dvh items-center justify-center bg-background">
+        <LogoMark className="logo-pulse h-12 w-12 text-primary" />
       </div>
     );
   }

@@ -24,6 +24,7 @@ const ALL: Permission[] = [
   "settings.view",
   "settings.manage",
   "driver.space",
+  "wholesale.use",
 ];
 
 export const ROLES: Record<RoleCode, Role> = {
@@ -47,6 +48,7 @@ export const ROLES: Record<RoleCode, Role> = {
       "stock.view",
       "stock.manage",
       "pos.use",
+      "wholesale.use",
       "logistics.view",
       "logistics.manage",
       "customers.view",
@@ -72,7 +74,7 @@ export const ROLES: Record<RoleCode, Role> = {
     code: "CAISSIER",
     label: "Caissier",
     description: "Ventes au comptoir et clôture de caisse.",
-    permissions: ["pos.use", "customers.view", "dashboard.view"],
+    permissions: ["pos.use", "wholesale.use", "customers.view", "dashboard.view"],
     enabled: true,
   },
   MAGASINIER: {
@@ -113,6 +115,7 @@ export const ROUTE_PERMISSION: Array<{ path: string; perm: Permission }> = [
   { path: "/", perm: "dashboard.view" },
   { path: "/commandes", perm: "orders.view" },
   { path: "/pos", perm: "pos.use" },
+  { path: "/gros", perm: "wholesale.use" },
   { path: "/produits", perm: "products.view" },
   { path: "/stock", perm: "stock.view" },
   { path: "/logistique", perm: "logistics.view" },

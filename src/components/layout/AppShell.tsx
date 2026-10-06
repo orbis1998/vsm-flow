@@ -19,7 +19,7 @@ import {
   Wallet,
   ClipboardList,
   Bike,
-  Loader2,
+  Warehouse,
 } from "lucide-react";
 import { useSession } from "@/hooks/useSession";
 import { usePushNotifications } from "@/hooks/usePush";
@@ -46,6 +46,7 @@ const NAV: Array<{
   { to: "/", label: "Tableau de bord", icon: LayoutDashboard, perm: "dashboard.view" },
   { to: "/commandes", label: "Commandes", icon: ClipboardList, perm: "orders.view" },
   { to: "/pos", label: "Caisse", icon: ShoppingCart, perm: "pos.use" },
+  { to: "/gros", label: "Gros", icon: Warehouse, perm: "wholesale.use" },
   { to: "/produits", label: "Articles", icon: Package, perm: "products.view" },
   { to: "/stock", label: "Stock", icon: Boxes, perm: "stock.view" },
   { to: "/logistique", label: "Livraisons", icon: Truck, perm: "logistics.view" },
@@ -60,7 +61,7 @@ const NAV: Array<{
 
 const MOBILE_BY_ROLE: Partial<Record<RoleCode, string[]>> = {
   LIVREUR: ["/livreur", "/stock"],
-  CAISSIER: ["/", "/pos", "/clients"],
+  CAISSIER: ["/", "/pos", "/gros", "/clients"],
   MAGASINIER: ["/", "/stock", "/produits"],
   COMPTABLE: ["/", "/finance", "/rapports"],
   RESP_LOGISTIQUE: ["/", "/commandes", "/logistique"],
@@ -149,7 +150,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     }
   }, [mine, unread]);
 
-  const mobilePaths = MOBILE_BY_ROLE[role] ?? ["/", "/commandes", "/pos", "/stock"];
+  const mobilePaths = MOBILE_BY_ROLE[role] ?? ["/", "/commandes", "/pos", "/gros"];
   const mobileNav = NAV.filter(
     (n) => can(n.perm) && (!n.only || n.only.includes(role)) && mobilePaths.includes(n.to),
   ).sort((a, b) => mobilePaths.indexOf(a.to) - mobilePaths.indexOf(b.to));
@@ -174,9 +175,6 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Button variant="ghost" size="icon" className="shrink-0 lg:hidden" onClick={() => setOpen(true)} aria-label="Menu">
             <Menu className="h-5 w-5" />
           </Button>
-          {pageBusy && (
-            <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary lg:hidden" aria-hidden />
-          )}
           {isGlobalRole(role) ? (
             <div className="min-w-0 flex-1" />
           ) : user.posteId && postes.find((p) => p.id === user.posteId) ? (
@@ -193,9 +191,6 @@ export function AppShell({ children }: { children: ReactNode }) {
             <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">Aucune boutique rattachée</span>
           )}
           <div className="ml-auto flex shrink-0 items-center gap-1">
-          {pageBusy && (
-            <Loader2 className="hidden h-4 w-4 animate-spin text-primary lg:block" aria-hidden />
-          )}
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="ghost" size="icon" className="relative" aria-label="Notifications">

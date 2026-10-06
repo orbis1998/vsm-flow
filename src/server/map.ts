@@ -338,6 +338,8 @@ export function mapSale(row: Record<string, unknown>, items: SaleItem[]): Sale {
   };
   const customerId = optStr(row.customer_id);
   if (customerId) sale.customerId = customerId;
+  if (row.kind === "gros") sale.kind = "gros";
+  else if (row.kind === "comptoir") sale.kind = "comptoir";
   return sale;
 }
 

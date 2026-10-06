@@ -112,7 +112,34 @@ function makePng(size) {
   ]);
 }
 
+function makeIco(pngs) {
+  const header = Buffer.alloc(6);
+  header.writeUInt16LE(1, 2);
+  header.writeUInt16LE(pngs.length, 4);
+  let offset = 6 + 16 * pngs.length;
+  const entries = pngs.map((png) => {
+    const entry = Buffer.alloc(16);
+    entry[0] = png.size >= 256 ? 0 : png.size;
+    entry[1] = png.size >= 256 ? 0 : png.size;
+    entry.writeUInt16LE(1, 4);
+    entry.writeUInt16LE(32, 6);
+    entry.writeUInt32LE(png.data.length, 8);
+    entry.writeUInt32LE(offset, 12);
+    offset += png.data.length;
+    return entry;
+  });
+  return Buffer.concat([header, ...entries, ...pngs.map((p) => p.data)]);
+}
+
 const dir = path.resolve(process.cwd(), "public");
+const png16 = makePng(16);
+const png32 = makePng(32);
+const png48 = makePng(48);
 fs.writeFileSync(path.join(dir, "icon-192.png"), makePng(192));
 fs.writeFileSync(path.join(dir, "icon-96.png"), makePng(96));
-console.log("wrote public/icon-192.png and public/icon-96.png");
+fs.writeFileSync(path.join(dir, "favicon.ico"), makeIco([
+  { size: 16, data: png16 },
+  { size: 32, data: png32 },
+  { size: 48, data: png48 },
+]));
+console.log("wrote public/icon-192.png, public/icon-96.png and public/favicon.ico");

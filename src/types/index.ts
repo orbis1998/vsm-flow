@@ -38,7 +38,8 @@ export type Permission =
   | "users.manage"
   | "settings.view"
   | "settings.manage"
-  | "driver.space";
+  | "driver.space"
+  | "wholesale.use";
 
 export interface Role {
   code: RoleCode;
@@ -333,6 +334,8 @@ export interface SaleItem {
   discount: number;
 }
 
+export type SaleKind = "comptoir" | "gros";
+
 export interface Sale {
   id: ID;
   reference: string;
@@ -348,6 +351,7 @@ export interface Sale {
   receivedUsd: number;
   receivedCdf: number;
   createdAt: ISODate;
+  kind?: SaleKind | undefined;
 }
 
 /* ---------------------------------- Finance --------------------------------- */

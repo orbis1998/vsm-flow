@@ -138,6 +138,7 @@ export const salesService = {
     discount: number;
     receivedUsd?: number;
     receivedCdf?: number;
+    kind?: Sale["kind"];
     items: Array<Omit<SaleItem, "id">>;
   }) {
     return mutate({ op: "sale.create", input }) as Promise<Sale>;

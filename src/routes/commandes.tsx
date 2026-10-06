@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { Plus, Trash2 } from "lucide-react";
 import { useAppState } from "@/lib/app-store";
 import { communeName, zoneName } from "@/lib/geo";
-import { pickAvailableVariant, productInStock, productStock } from "@/lib/catalog";
+import { driverProductQty, driverVariantQty, pickAvailableVariant, productStock } from "@/lib/catalog";
 import { dateTime, dueAtFromKinshasaTime, moneyCdf, moneyUsd, ORDER_STATUS_LABEL, ORDER_STATUS_ORDER, timeKinshasa } from "@/lib/format";
 import { APP_NAME } from "@/lib/brand";
 import { variantLabel } from "@/lib/variants";
@@ -294,7 +294,7 @@ function OrderSheet({ order, onClose }: { order: Order | null; onClose: () => vo
                     </Select>
                   </div>
                   <div className="min-w-0">
-                    <Label>Livreur</Label>
+                    <Label>Livreur (stock du livreur)</Label>
                     {drivers.length === 0 ? (
                       <p className="mt-1 text-xs text-muted-foreground">
                         Aucun livreur. Créez un compte rôle Livreur dans Équipe.
@@ -376,6 +376,7 @@ function NewOrderDialog({
   const communes = useAppState((s) => s.communes);
   const zones = useAppState((s) => s.zones);
   const drivers = useAppState((s) => s.drivers.filter((d) => d.active));
+  const driverStock = useAppState((s) => s.driverStock ?? []);
   const zonesOf = (cid: string) => zones.filter((z) => z.communeId === cid);
   const [customerId, setCustomerId] = useState("");
   const [customerName, setCustomerName] = useState("");
@@ -392,9 +393,12 @@ function NewOrderDialog({
   const [driverId, setDriverId] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const available = products.filter(productInStock);
+  const productQty = (p: { id: string; variants: Array<{ stock: number }> }) =>
+    driverId ? driverProductQty(driverStock, driverId, p.id) : productStock(p as never);
+  const available = products.filter((p) => productQty(p) > 0);
   const selectedProduct = products.find((p) => p.id === productId);
-  const stockVariants = selectedProduct?.variants.filter((v) => v.stock > 0) ?? [];
+  const stockVariants =
+    selectedProduct?.variants.filter((v) => (driverId ? driverVariantQty(driverStock, driverId, selectedProduct.id, v.id) : v.stock) > 0) ?? [];
   const fee = zones.find((z) => z.id === zoneId)?.defaultFee ?? 0;
   const total = lines.reduce((s, l) => {
     const p = products.find((x) => x.id === l.productId);
@@ -404,14 +408,19 @@ function NewOrderDialog({
   const addLine = () => {
     if (!productId) return;
     const p = products.find((x) => x.id === productId);
-    if (!p || !productInStock(p)) {
-      toast.error("Article en rupture de stock");
+    if (!p || productQty(p) < 1) {
+      toast.error(driverId ? "Cet article n'est pas dans le stock du livreur" : "Article en rupture de stock");
       return;
     }
-    const chosen = variantId || pickAvailableVariant(p)?.id;
+    const chosen =
+      variantId ||
+      (driverId
+        ? p.variants.find((v) => driverVariantQty(driverStock, driverId, p.id, v.id) > 0)?.id
+        : pickAvailableVariant(p)?.id);
     const variant = p.variants.find((v) => v.id === chosen);
-    if (!variant || variant.stock < 1) {
-      toast.error("Choisissez une variante en stock");
+    const have = variant ? (driverId ? driverVariantQty(driverStock, driverId, p.id, variant.id) : variant.stock) : 0;
+    if (!variant || have < 1) {
+      toast.error(driverId ? "Variante absente du stock livreur" : "Choisissez une variante en stock");
       return;
     }
     setLines((l) => [...l, { productId, variantId: variant.id, qty: 1 }]);
@@ -433,9 +442,18 @@ function NewOrderDialog({
     for (const l of lines) {
       const p = products.find((x) => x.id === l.productId);
       if (!p) continue;
-      const variant = p.variants.find((v) => v.id === l.variantId) ?? pickAvailableVariant(p, l.qty);
-      if (!variant || variant.stock < l.qty) {
-        toast.error(`${p.name} : stock insuffisant`);
+      const variant =
+        p.variants.find((v) => v.id === l.variantId) ??
+        (driverId
+          ? p.variants.find((v) => driverVariantQty(driverStock, driverId, p.id, v.id) >= l.qty)
+          : pickAvailableVariant(p, l.qty));
+      const have = variant
+        ? driverId
+          ? driverVariantQty(driverStock, driverId, p.id, variant.id)
+          : variant.stock
+        : 0;
+      if (!variant || have < l.qty) {
+        toast.error(`${p.name} : ${driverId ? "stock livreur" : "stock"} insuffisant`);
         return;
       }
       const label = variantLabel(variant.options);
@@ -556,18 +574,22 @@ function NewOrderDialog({
                 onValueChange={(v) => {
                   setProductId(v);
                   const p = products.find((x) => x.id === v);
-                  const first = p?.variants.find((x) => x.stock > 0);
+                  const first = p?.variants.find((x) =>
+                    driverId ? driverVariantQty(driverStock, driverId, p.id, x.id) > 0 : x.stock > 0,
+                  );
                   setVariantId(first?.id ?? "");
                 }}
               >
                 <SelectTrigger><SelectValue placeholder="Produit" /></SelectTrigger>
                 <SelectContent>
                   {available.length === 0 ? (
-                    <SelectItem value="__empty" disabled>Aucun article en stock</SelectItem>
+                    <SelectItem value="__empty" disabled>
+                      {driverId ? "Aucun article dans le stock de ce livreur" : "Aucun article en stock"}
+                    </SelectItem>
                   ) : (
                     available.map((p) => (
                       <SelectItem key={p.id} value={p.id}>
-                        {p.name} · {productStock(p)}
+                        {p.name} · {productQty(p)}
                       </SelectItem>
                     ))
                   )}
@@ -578,7 +600,7 @@ function NewOrderDialog({
                 <SelectContent>
                   {stockVariants.map((v) => (
                     <SelectItem key={v.id} value={v.id}>
-                      {variantLabel(v.options)} · stock {v.stock}
+                      {variantLabel(v.options)} · stock {driverId ? driverVariantQty(driverStock, driverId, selectedProduct!.id, v.id) : v.stock}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -603,7 +625,7 @@ function NewOrderDialog({
             </div>
           </div>
           <div>
-            <Label>Livreur (facultatif)</Label>
+            <Label>Livreur (facultatif — déduit son stock, pas celui de la boutique)</Label>
             {drivers.length === 0 ? (
               <p className="mt-1 text-xs text-muted-foreground">Aucun livreur. Créez un compte rôle Livreur dans Équipe.</p>
             ) : (

@@ -14,6 +14,7 @@ import { Route as ClientsRouteImport } from './routes/clients'
 import { Route as CommandesRouteImport } from './routes/commandes'
 import { Route as FinanceRouteImport } from './routes/finance'
 import { Route as FournisseursRouteImport } from './routes/fournisseurs'
+import { Route as GrosRouteImport } from './routes/gros'
 import { Route as LivreurRouteImport } from './routes/livreur'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as LogistiqueRouteImport } from './routes/logistique'
@@ -47,6 +48,11 @@ const FinanceRoute = FinanceRouteImport.update({
 const FournisseursRoute = FournisseursRouteImport.update({
   id: '/fournisseurs',
   path: '/fournisseurs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GrosRoute = GrosRouteImport.update({
+  id: '/gros',
+  path: '/gros',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LivreurRoute = LivreurRouteImport.update({
@@ -101,6 +107,7 @@ export interface FileRoutesByFullPath {
   '/commandes': typeof CommandesRoute
   '/finance': typeof FinanceRoute
   '/fournisseurs': typeof FournisseursRoute
+  '/gros': typeof GrosRoute
   '/livreur': typeof LivreurRoute
   '/login': typeof LoginRoute
   '/logistique': typeof LogistiqueRoute
@@ -117,6 +124,7 @@ export interface FileRoutesByTo {
   '/commandes': typeof CommandesRoute
   '/finance': typeof FinanceRoute
   '/fournisseurs': typeof FournisseursRoute
+  '/gros': typeof GrosRoute
   '/livreur': typeof LivreurRoute
   '/login': typeof LoginRoute
   '/logistique': typeof LogistiqueRoute
@@ -134,6 +142,7 @@ export interface FileRoutesById {
   '/commandes': typeof CommandesRoute
   '/finance': typeof FinanceRoute
   '/fournisseurs': typeof FournisseursRoute
+  '/gros': typeof GrosRoute
   '/livreur': typeof LivreurRoute
   '/login': typeof LoginRoute
   '/logistique': typeof LogistiqueRoute
@@ -152,6 +161,7 @@ export interface FileRouteTypes {
     | '/commandes'
     | '/finance'
     | '/fournisseurs'
+    | '/gros'
     | '/livreur'
     | '/login'
     | '/logistique'
@@ -168,6 +178,7 @@ export interface FileRouteTypes {
     | '/commandes'
     | '/finance'
     | '/fournisseurs'
+    | '/gros'
     | '/livreur'
     | '/login'
     | '/logistique'
@@ -184,6 +195,7 @@ export interface FileRouteTypes {
     | '/commandes'
     | '/finance'
     | '/fournisseurs'
+    | '/gros'
     | '/livreur'
     | '/login'
     | '/logistique'
@@ -201,6 +213,7 @@ export interface RootRouteChildren {
   CommandesRoute: typeof CommandesRoute
   FinanceRoute: typeof FinanceRoute
   FournisseursRoute: typeof FournisseursRoute
+  GrosRoute: typeof GrosRoute
   LivreurRoute: typeof LivreurRoute
   LoginRoute: typeof LoginRoute
   LogistiqueRoute: typeof LogistiqueRoute
@@ -247,6 +260,13 @@ declare module '@tanstack/react-router' {
       path: '/fournisseurs'
       fullPath: '/fournisseurs'
       preLoaderRoute: typeof FournisseursRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/gros': {
+      id: '/gros'
+      path: '/gros'
+      fullPath: '/gros'
+      preLoaderRoute: typeof GrosRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/livreur': {
@@ -321,6 +341,7 @@ const rootRouteChildren: RootRouteChildren = {
   CommandesRoute: CommandesRoute,
   FinanceRoute: FinanceRoute,
   FournisseursRoute: FournisseursRoute,
+  GrosRoute: GrosRoute,
   LivreurRoute: LivreurRoute,
   LoginRoute: LoginRoute,
   LogistiqueRoute: LogistiqueRoute,
