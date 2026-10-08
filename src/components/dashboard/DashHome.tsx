@@ -9,7 +9,6 @@ import {
   boutiqueBars,
   byExpenseCat,
   changePct,
-  compactUsd,
   dayLabel,
   merchOn,
   rangeDays,
@@ -22,6 +21,7 @@ import type { OrderStatus } from "@/types";
 
 const RANGES: DashRange[] = [7, 14, 30];
 const PIPE: OrderStatus[] = ["nouvelle", "a_preparer", "prete", "assignee", "en_livraison"];
+type Metric = "today" | "ventes" | "depenses" | "resultat";
 
 function Clock() {
   const [text, setText] = useState("");
@@ -45,40 +45,15 @@ function Clock() {
   return <span>{text}</span>;
 }
 
-function Kpi({
-  label,
-  value,
-  hint,
-  series,
-  delta,
-  accent,
-}: {
-  label: string;
-  value: number;
-  hint: string;
-  series: number[];
-  delta?: number;
-  accent?: boolean;
-}) {
+function Signal({ delta, invert }: { delta: number; invert?: boolean }) {
+  if (!Number.isFinite(delta) || Math.abs(delta) < 0.05) {
+    return <span className="dash-sig is-flat">stable</span>;
+  }
+  const good = invert ? delta < 0 : delta > 0;
   return (
-    <article className={`dash-kpi${accent ? " is-accent" : ""}`}>
-      <p className="dash-kpi__label">{label}</p>
-      <p className="dash-kpi__value num">
-        <AnimatedUsd amount={value} />
-      </p>
-      <p className="dash-kpi__hint">
-        {hint}
-        {delta != null && (
-          <span className={delta >= 0 ? "is-up" : "is-down"}>
-            {delta >= 0 ? " +" : " "}
-            {pct(delta)}
-          </span>
-        )}
-      </p>
-      <div className="dash-kpi__spark">
-        <Sparkline data={series} />
-      </div>
-    </article>
+    <span className={good ? "dash-sig is-up" : "dash-sig is-down"}>
+      {delta > 0 ? "▲" : "▼"} {pct(Math.abs(delta))}
+    </span>
   );
 }
 
@@ -99,6 +74,7 @@ export function DashHome() {
   const expenses = useAppState((s) => s.expenses);
   const purchaseOrders = useAppState((s) => s.purchaseOrders);
   const [range, setRange] = useState<DashRange>(7);
+  const [metric, setMetric] = useState<Metric>("ventes");
 
   const orders = scopedOrders(ordersAll, users, drivers, role, posteId);
   const sales = scopedSales(salesAll, role, posteId);
@@ -107,23 +83,30 @@ export function DashHome() {
 
   const today = kinshasaYmd();
   const days = useMemo(() => rangeDays(range), [range]);
+  const prevDays = useMemo(() => rangeDays(range, range), [range]);
   const rate = company.usdCdfRate || 2800;
 
   const seriesVentes = days.map((d) => merchOn(sales, orders, d));
   const seriesSpend = days.map((d) => spentOn(expenses, purchaseOrders, d));
-  const trend = days.map((d, i) => ({
-    label: dayLabel(d),
-    ventes: seriesVentes[i] ?? 0,
-    depenses: seriesSpend[i] ?? 0,
-  }));
+  const seriesNet = seriesVentes.map((v, i) => v - (seriesSpend[i] ?? 0));
+  const prevVentes = prevDays.map((d) => merchOn(sales, orders, d));
+  const prevSpend = prevDays.map((d) => spentOn(expenses, purchaseOrders, d));
+  const prevNet = prevVentes.map((v, i) => v - (prevSpend[i] ?? 0));
 
   const merchToday = merchOn(sales, orders, today);
-  const merchPrev = merchOn(sales, orders, addDaysYmd(-range));
+  const merchYesterday = merchOn(sales, orders, addDaysYmd(-1));
   const merchPeriod = seriesVentes.reduce((n, v) => n + v, 0);
+  const merchPrevPeriod = prevVentes.reduce((n, v) => n + v, 0);
   const spentPeriod = seriesSpend.reduce((n, v) => n + v, 0);
+  const spentPrevPeriod = prevSpend.reduce((n, v) => n + v, 0);
   const spentToday = spentOn(expenses, purchaseOrders, today);
   const netPeriod = merchPeriod - spentPeriod;
-  const delta = changePct(merchToday, merchPrev);
+  const netPrevPeriod = merchPrevPeriod - spentPrevPeriod;
+
+  const dToday = changePct(merchToday, merchYesterday);
+  const dVentes = changePct(merchPeriod, merchPrevPeriod);
+  const dSpend = changePct(spentPeriod, spentPrevPeriod);
+  const dNet = changePct(netPeriod, netPrevPeriod);
 
   const recUsdToday =
     sales.filter((s) => ymdOf(s.createdAt) === today).reduce((n, s) => n + s.receivedUsd, 0) +
@@ -144,11 +127,66 @@ export function DashHome() {
     n: orders.filter((o) => o.status === s).length,
   }));
 
+  const chartSeries =
+    metric === "depenses" ? seriesSpend : metric === "resultat" ? seriesNet : seriesVentes;
+  const chartPrev = metric === "depenses" ? prevSpend : metric === "resultat" ? prevNet : prevVentes;
+  const chartRows = days.map((d, i) => ({
+    label: dayLabel(d),
+    current: chartSeries[i] ?? 0,
+    previous: chartPrev[i] ?? 0,
+  }));
+
+  const tabs: Array<{
+    id: Metric;
+    label: string;
+    value: number;
+    delta: number;
+    invert?: boolean;
+    series: number[];
+    hint: string;
+  }> = [
+    {
+      id: "today",
+      label: "Aujourd'hui",
+      value: merchToday,
+      delta: dToday,
+      series: seriesVentes,
+      hint: "vs hier · hors livraison",
+    },
+    {
+      id: "ventes",
+      label: `Ventes ${range} j`,
+      value: merchPeriod,
+      delta: dVentes,
+      series: seriesVentes,
+      hint: `vs ${range} j préc.`,
+    },
+    {
+      id: "depenses",
+      label: "Dépenses",
+      value: spentPeriod,
+      delta: dSpend,
+      invert: true,
+      series: seriesSpend,
+      hint: `${moneyUsd(spentToday)} aujourd'hui`,
+    },
+    {
+      id: "resultat",
+      label: "Résultat",
+      value: netPeriod,
+      delta: dNet,
+      series: seriesNet,
+      hint: `vs ${range} j préc.`,
+    },
+  ];
+  const active = tabs.find((t) => t.id === metric) ?? tabs[1]!;
+
   return (
     <div className="dash">
       <header className="dash-hero">
         <div className="min-w-0">
           {boutique ? <p className="dash-hero__kicker">{boutique.name}</p> : null}
+          <h1 className="dash-hero__title">Tableau de bord</h1>
           <p className="dash-hero__meta">
             <Clock />
             <span aria-hidden>·</span>
@@ -171,44 +209,50 @@ export function DashHome() {
         </div>
       </header>
 
-      <section className="dash-kpis">
-        <Kpi
-          label="Ventes aujourd'hui"
-          value={merchToday}
-          hint={`${moneyCdf(merchToday * rate)} · hors livraison`}
-          series={seriesVentes}
-          delta={delta}
-          accent
-        />
-        <Kpi
-          label={`Ventes ${range} j`}
-          value={merchPeriod}
-          hint={`vs ${compactUsd(merchPrev)} il y a ${range} j`}
-          series={seriesVentes}
-        />
-        <Kpi
-          label="Dépenses période"
-          value={spentPeriod}
-          hint={`${moneyUsd(spentToday)} aujourd'hui`}
-          series={seriesSpend}
-        />
-        <Kpi
-          label="Résultat période"
-          value={netPeriod}
-          hint={`${moneyUsd(merchPeriod)} de marchandise`}
-          series={seriesVentes.map((v, i) => v - (seriesSpend[i] ?? 0))}
-        />
+      <section className="dash-board">
+        <header className="dash-board__head">
+          <div>
+            <p className="dash-board__kicker">{active.label}</p>
+            <p className="dash-board__value num">
+              <AnimatedUsd amount={active.value} />
+            </p>
+            <p className="dash-board__hint">
+              <Signal delta={active.delta} invert={active.invert} />
+              <span>{active.hint}</span>
+            </p>
+          </div>
+        </header>
+        <div className="dash-board__tabs" role="tablist" aria-label="Indicateur">
+          {tabs.map((t) => {
+            const on = metric === t.id;
+            const sparkUp = t.invert ? t.delta <= 0 : t.delta >= 0;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={on}
+                className={on ? "is-on" : undefined}
+                onClick={() => setMetric(t.id)}
+              >
+                <span className="dash-board__tab-top">
+                  <span>{t.label}</span>
+                  <Signal delta={t.delta} invert={t.invert} />
+                </span>
+                <span className="dash-board__tab-row">
+                  <strong className="num">{moneyUsd(t.value)}</strong>
+                  <span className={`dash-board__mini${sparkUp ? "" : " is-down"}`}>
+                    <Sparkline data={t.series} up={sparkUp} />
+                  </span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        <TrendChart data={chartRows} />
       </section>
 
       <section className="dash-grid">
-        <article className="dash-panel dash-panel--wide">
-          <header className="dash-panel__head">
-            <h2>Activité</h2>
-            <p>Ventes, dépenses et résultat · {range} jours · Kinshasa</p>
-          </header>
-          <TrendChart data={trend} />
-        </article>
-
         <article className="dash-panel">
           <header className="dash-panel__head">
             <h2>Encaissé aujourd'hui</h2>

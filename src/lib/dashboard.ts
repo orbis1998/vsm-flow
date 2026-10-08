@@ -13,8 +13,8 @@ export function dayLabel(ymd: string) {
   });
 }
 
-export function rangeDays(range: DashRange): string[] {
-  return Array.from({ length: range }, (_, i) => addDaysYmd(i - (range - 1)));
+export function rangeDays(range: DashRange, endOffset = 0): string[] {
+  return Array.from({ length: range }, (_, i) => addDaysYmd(i - (range - 1) - endOffset));
 }
 
 function inDay(iso: string, ymd: string) {
