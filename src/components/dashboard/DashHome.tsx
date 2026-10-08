@@ -24,25 +24,34 @@ const PIPE: OrderStatus[] = ["nouvelle", "a_preparer", "prete", "assignee", "en_
 type Metric = "today" | "ventes" | "depenses" | "resultat";
 
 function Clock() {
-  const [text, setText] = useState("");
+  const [now, setNow] = useState(() => new Date());
   useEffect(() => {
-    const tick = () => {
-      setText(
-        new Date().toLocaleString("fr-FR", {
-          timeZone: "Africa/Kinshasa",
-          weekday: "long",
-          day: "numeric",
-          month: "long",
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-      );
-    };
-    tick();
-    const id = window.setInterval(tick, 30_000);
+    setNow(new Date());
+    const id = window.setInterval(() => setNow(new Date()), 30_000);
     return () => window.clearInterval(id);
   }, []);
-  return <span>{text}</span>;
+  const date = now.toLocaleDateString("fr-FR", {
+    timeZone: "Africa/Kinshasa",
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
+  const time = now.toLocaleTimeString("fr-FR", {
+    timeZone: "Africa/Kinshasa",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  return (
+    <p className="dash-hero__meta">
+      <span className="dash-hero__live">
+        <i aria-hidden />
+        Live
+      </span>
+      <time dateTime={now.toISOString()}>{time}</time>
+      <span>{date}</span>
+      <span>Kinshasa</span>
+    </p>
+  );
 }
 
 function Signal({ delta, invert }: { delta: number; invert?: boolean }) {
@@ -187,11 +196,7 @@ export function DashHome() {
         <div className="min-w-0">
           {boutique ? <p className="dash-hero__kicker">{boutique.name}</p> : null}
           <h1 className="dash-hero__title">Tableau de bord</h1>
-          <p className="dash-hero__meta">
-            <Clock />
-            <span aria-hidden>·</span>
-            Kinshasa
-          </p>
+          <Clock />
         </div>
         <div className="dash-range" role="tablist" aria-label="Période">
           {RANGES.map((r) => (
