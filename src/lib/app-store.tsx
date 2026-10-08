@@ -13,7 +13,7 @@ export function useAppQuery() {
     queryFn: () => getAppStateFn(),
     staleTime: live ? 8_000 : 5 * 60_000,
     gcTime: 30 * 60_000,
-    refetchInterval: live ? 12_000 : 90_000,
+    refetchInterval: live ? 8_000 : 90_000,
     refetchOnWindowFocus: live,
     placeholderData: (previous) => previous,
     retry: 2,

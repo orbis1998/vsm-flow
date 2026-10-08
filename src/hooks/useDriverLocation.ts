@@ -1,8 +1,8 @@
 import { useEffect, useRef } from "react";
 import { ordersService } from "@/services";
 
-const INTERVAL_MS = 12_000;
-const MIN_MOVE_M = 8;
+const INTERVAL_MS = 5_000;
+const MIN_MOVE_M = 4;
 
 function haversineM(aLat: number, aLng: number, bLat: number, bLng: number): number {
   const toRad = (d: number) => (d * Math.PI) / 180;
@@ -14,7 +14,7 @@ function haversineM(aLat: number, aLng: number, bLat: number, bLng: number): num
   return 2 * 6371000 * Math.asin(Math.min(1, Math.sqrt(s)));
 }
 
-/** Envoie la GPS du livreur tant qu'il a une course « en livraison ». */
+/** Envoie la GPS du livreur tant qu'il a une course assignée ou en livraison. */
 export function useDriverLocation(userId: string, tracking: boolean) {
   const last = useRef<{ t: number; lat: number; lng: number } | null>(null);
 

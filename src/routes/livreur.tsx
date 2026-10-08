@@ -29,7 +29,7 @@ function DriverPage() {
   const driver = drivers.find((d) => d.userId === user.id) ?? drivers.find((d) => d.fullName === user.fullName);
   const mine = orders.filter((o) => driver && o.driverId === driver.id && !["livree", "annulee"].includes(o.status));
   const done = orders.filter((o) => driver && o.driverId === driver.id && o.status === "livree");
-  const tracking = allowed && mine.some((o) => o.status === "en_livraison");
+  const tracking = allowed && mine.some((o) => o.status === "en_livraison" || o.status === "assignee");
   useDriverLocation(user.id, tracking);
   if (!allowed) return <Forbidden />;
 
@@ -60,7 +60,7 @@ function DriverPage() {
       )}
       {tracking && (
         <p className="mb-4 rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-          Position partagée pendant la course — le bureau vous voit sur la carte.
+          Position partagée — le bureau suit votre trajet et l'heure d'arrivée.
         </p>
       )}
       {!driver && (

@@ -203,8 +203,8 @@ export function DashHome() {
       <section className="dash-grid">
         <article className="dash-panel dash-panel--wide">
           <header className="dash-panel__head">
-            <h2>Ventes et dépenses</h2>
-            <p>Marchandise USD · {range} derniers jours</p>
+            <h2>Activité</h2>
+            <p>Ventes, dépenses et résultat · {range} jours · Kinshasa</p>
           </header>
           <TrendChart data={trend} />
         </article>

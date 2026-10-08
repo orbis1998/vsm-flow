@@ -94,6 +94,11 @@ export const getAppStateFn = createServerFn({ method: "GET" }).handler(async () 
   return loadAppState();
 });
 
+export const getFleetLiveFn = createServerFn({ method: "GET" }).handler(async () => {
+  const { loadFleetLive } = await import("@/server/fleet");
+  return loadFleetLive();
+});
+
 function unwrapMutation(raw: unknown, depth = 0): AppMutation {
   if (depth > 8) throw new Error("Requête d'enregistrement invalide.");
   if (!raw || typeof raw !== "object") throw new Error("Requête d'enregistrement invalide.");
@@ -235,8 +240,8 @@ export const mutateAppFn = createServerFn({ method: "POST", strict: false })
             userId: data.userId,
             lat: data.lat,
             lng: data.lng,
-            heading: data.heading,
-            accuracy: data.accuracy,
+            ...(typeof data.heading === "number" ? { heading: data.heading } : {}),
+            ...(typeof data.accuracy === "number" ? { accuracy: data.accuracy } : {}),
           });
           return null;
         default:

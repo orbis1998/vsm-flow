@@ -121,19 +121,42 @@ export async function pingDriverLocation(
   if (!driver.rows[0]) return;
   const heading = Number(input.heading);
   const accuracy = Number(input.accuracy);
+  const driverId = String(driver.rows[0].id);
   await client.query(
     `update delivery_drivers set
       last_lat = $2, last_lng = $3,
       last_heading = $4, last_accuracy = $5, last_seen_at = now()
      where id = $1`,
     [
-      driver.rows[0].id,
+      driverId,
       lat,
       lng,
       Number.isFinite(heading) ? heading : null,
       Number.isFinite(accuracy) ? accuracy : null,
     ],
   );
+  try {
+    const { ensureDriverTrail } = await import("./db");
+    await ensureDriverTrail(client);
+    await client.query(
+      `insert into driver_positions (id, driver_id, lat, lng, heading, recorded_at)
+       values ($1,$2,$3,$4,$5, now())`,
+      [nextId("dpt"), driverId, lat, lng, Number.isFinite(heading) ? heading : null],
+    );
+    await client.query(
+      `delete from driver_positions
+       where driver_id = $1
+         and id not in (
+           select id from driver_positions
+           where driver_id = $1
+           order by recorded_at desc
+           limit 80
+         )`,
+      [driverId],
+    );
+  } catch {
+    // la position instantanée reste même si la trace échoue
+  }
 }
 
 const DELIVERY_STATUSES = new Set(["assignee", "en_livraison", "livree", "echec", "retour"]);

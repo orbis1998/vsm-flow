@@ -35,19 +35,17 @@ function LogisticsPage() {
   const toAssign = orders.filter((o) => ["nouvelle", "a_preparer", "prete"].includes(o.status) && !o.driverId);
   const active = orders.filter((o) => ["assignee", "en_livraison"].includes(o.status));
   const activeDrivers = drivers.filter((d) => d.active);
-  const onRun = drivers.filter((d) => active.some((o) => o.driverId === d.id));
-
   return (
     <div>
-      <PageHeader title="Logistique" subtitle="Livreurs et tournées" />
+      <PageHeader title="Logistique" subtitle="Suivi live des courses" />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="À assigner" value={toAssign.length} accent />
         <StatCard label="En cours" value={active.length} />
         <StatCard label="Livreurs actifs" value={drivers.filter((d) => d.active).length} />
         <StatCard label="À encaisser (en cours)" value={money(active.reduce((s, o) => s + o.totalToCollect, 0))} />
       </div>
-      <div className="mt-6">
-        <LiveMap token={mapboxToken} drivers={onRun} orders={active} communes={communes} />
+      <div className="mt-5">
+        <LiveMap token={mapboxToken} communes={communes} />
       </div>
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
         <Card className="rounded-md">

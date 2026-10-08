@@ -98,7 +98,7 @@ async function grabClient(): Promise<pg.PoolClient> {
   throw last;
 }
 
-const SCHEMA_VERSION = 10;
+const SCHEMA_VERSION = 11;
 
 export type ManagerPing = {
   title: string;
@@ -148,6 +148,7 @@ async function prepare(client: pg.PoolClient) {
   const tagged = client as pg.PoolClient & { __vsmSchema?: number };
   try {
     await ensureDriverStock(client);
+    await ensureDriverTrail(client);
   } catch {
     // la page doit quand même charger si la table n'est pas encore là
   }
@@ -209,7 +210,22 @@ async function prepare(client: pg.PoolClient) {
       and not exists (select 1 from delivery_drivers d where d.user_id = u.id)
   `);
   await ensureDriverStock(client);
+  await ensureDriverTrail(client);
   tagged.__vsmSchema = SCHEMA_VERSION;
+}
+
+export async function ensureDriverTrail(client: pg.PoolClient) {
+  await client.query(`
+    create table if not exists driver_positions (
+      id text primary key,
+      driver_id text not null references delivery_drivers(id) on delete cascade,
+      lat double precision not null,
+      lng double precision not null,
+      heading double precision,
+      recorded_at timestamptz not null default now()
+    )
+  `);
+  await client.query(`create index if not exists driver_positions_driver_at on driver_positions (driver_id, recorded_at desc)`);
 }
 
 export async function ensureDriverStock(client: pg.PoolClient) {
