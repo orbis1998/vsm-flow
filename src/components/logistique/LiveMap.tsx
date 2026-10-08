@@ -170,25 +170,35 @@ function FleetCanvas({
     if (!el || !token) return;
     let cancelled = false;
     let map: MapInstance | undefined;
+    let ro: ResizeObserver | undefined;
+    const fit = () => {
+      map?.resize();
+    };
 
     void (async () => {
       const mapboxgl = (await import("mapbox-gl")).default;
-      await import("mapbox-gl/dist/mapbox-gl.css");
       if (cancelled || !host.current) return;
       mapboxgl.accessToken = token;
       glRef.current = mapboxgl;
       map = new mapboxgl.Map({
         container: host.current,
-        style: "mapbox://styles/mapbox/dark-v11",
+        style: "mapbox://styles/mapbox/navigation-night-v1",
         center: KINSHASA_CENTER,
-        zoom: 11.6,
-        pitch: 46,
-        bearing: -14,
+        zoom: 12,
+        pitch: 0,
+        bearing: 0,
         attributionControl: false,
       });
       map.addControl(new mapboxgl.NavigationControl({ showCompass: false, visualizePitch: true }), "bottom-right");
       mapRef.current = map;
+      if (typeof ResizeObserver !== "undefined") {
+        ro = new ResizeObserver(fit);
+        ro.observe(host.current);
+      }
+      window.addEventListener("resize", fit);
       map.on("load", () => {
+        fit();
+        requestAnimationFrame(fit);
         if (!map) return;
         addSources(map);
         paint();
@@ -197,6 +207,8 @@ function FleetCanvas({
 
     return () => {
       cancelled = true;
+      ro?.disconnect();
+      window.removeEventListener("resize", fit);
       for (const m of markers.current.values()) m.remove();
       markers.current.clear();
       map?.remove();
@@ -278,7 +290,7 @@ function FleetCanvas({
           center: [focus.lastLng, focus.lastLat],
           zoom: Math.max(map.getZoom(), 13.6),
           duration: prev?.id === focus.id ? 1200 : 750,
-          pitch: 50,
+          pitch: 0,
           essential: true,
         });
       }
@@ -288,7 +300,7 @@ function FleetCanvas({
       if (viewRef.current !== key) {
         viewRef.current = key;
         try {
-          map.fitBounds(bounds, { padding: 88, maxZoom: 13.2, duration: 800, pitch: 42 });
+          map.fitBounds(bounds, { padding: 72, maxZoom: 13.2, duration: 800, pitch: 0 });
         } catch {
           // ignore
         }

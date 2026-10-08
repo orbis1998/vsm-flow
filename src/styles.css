@@ -863,20 +863,25 @@
 .fleet {
   display: grid;
   grid-template-columns: 1fr;
-  min-height: min(38rem, 78vh);
+  grid-template-rows: minmax(24rem, 1fr) auto;
+  height: min(42rem, 78vh);
+  min-height: 28rem;
   overflow: hidden;
   border: 1px solid color-mix(in oklch, #111 86%, #c41e3a);
-  background: #111;
+  background: #0b1220;
   border-radius: 1.15rem;
 }
 @media (min-width: 960px) {
   .fleet {
     grid-template-columns: 1fr 18.5rem;
+    grid-template-rows: 1fr;
   }
 }
 .fleet__map {
   position: relative;
-  min-height: 22rem;
+  min-height: 24rem;
+  height: 100%;
+  width: 100%;
 }
 .fleet-hud {
   position: absolute;
@@ -893,9 +898,17 @@
   letter-spacing: 0.16em;
   text-transform: uppercase;
 }
-.live-map {
+.live-map,
+.live-map .mapboxgl-map,
+.live-map .mapboxgl-canvas-container,
+.live-map .mapboxgl-canvas {
   position: absolute;
   inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+}
+.live-map .mapboxgl-canvas {
+  display: block;
 }
 .fleet-empty {
   display: flex;

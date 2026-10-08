@@ -20,6 +20,7 @@ import { APP_NAME } from "@/lib/brand";
 import { LogoMark } from "@/components/brand/LogoMark";
 import { Toaster } from "@/components/ui/sonner";
 import appCss from "../styles.css?url";
+import mapboxCss from "mapbox-gl/dist/mapbox-gl.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 
 function NotFoundComponent() {
@@ -103,6 +104,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       {
         rel: "stylesheet",
         href: appCss,
+      },
+      {
+        rel: "stylesheet",
+        href: mapboxCss,
       },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       {
