@@ -16,7 +16,7 @@ import {
 import { useId } from "react";
 import { moneyUsd } from "@/lib/format";
 import { compactUsd } from "@/lib/dashboard";
-import { ClientChart } from "./ClientChart";
+import { ClientChart, useNarrow } from "./ClientChart";
 
 type VolumeRow = { label: string; current: number; previous: number };
 
@@ -75,11 +75,12 @@ function VolumeTip({
 }
 
 export function TrendChart({ data }: { data: VolumeRow[] }) {
+  const narrow = useNarrow();
   return (
     <div className="dash-trend">
       <ClientChart height={300}>
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+        <ResponsiveContainer width="100%" height="100%" debounce={40}>
+          <AreaChart data={data} margin={{ top: 8, right: 6, left: 0, bottom: 2 }}>
             <defs>
               <linearGradient id="dashNow" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="var(--dash-red)" stopOpacity={0.28} />
@@ -89,18 +90,26 @@ export function TrendChart({ data }: { data: VolumeRow[] }) {
             <CartesianGrid stroke="var(--dash-grid)" vertical={false} />
             <XAxis
               dataKey="label"
-              tick={{ fontSize: 11, fill: "var(--dash-mute)", fontFamily: "IBM Plex Mono, ui-monospace, monospace" }}
+              tick={{ fontSize: 10, fill: "var(--dash-mute)", fontFamily: "IBM Plex Mono, ui-monospace, monospace" }}
               axisLine={false}
               tickLine={false}
+              interval={narrow ? "preserveStartEnd" : data.length > 10 ? 2 : data.length > 7 ? 1 : 0}
+              minTickGap={narrow ? 28 : 12}
             />
             <YAxis
               tickFormatter={compactUsd}
-              tick={{ fontSize: 11, fill: "var(--dash-mute)", fontFamily: "IBM Plex Mono, ui-monospace, monospace" }}
+              tick={{ fontSize: 10, fill: "var(--dash-mute)", fontFamily: "IBM Plex Mono, ui-monospace, monospace" }}
               axisLine={false}
               tickLine={false}
-              width={52}
+              width={narrow ? 28 : 44}
+              hide={narrow}
             />
-            <Tooltip content={<VolumeTip />} cursor={{ stroke: "var(--dash-red)", strokeWidth: 1, strokeOpacity: 0.28 }} />
+            <Tooltip
+              content={<VolumeTip />}
+              allowEscapeViewBox={{ x: false, y: false }}
+              wrapperStyle={{ zIndex: 4, maxWidth: "min(16rem, 80vw)" }}
+              cursor={{ stroke: "var(--dash-red)", strokeWidth: 1, strokeOpacity: 0.28 }}
+            />
             <Line
               type="monotone"
               dataKey="previous"
@@ -157,21 +166,22 @@ export function Sparkline({ data, up }: { data: number[]; up?: boolean }) {
 }
 
 export function SpendBars({ data }: { data: Array<{ label: string; amount: number }> }) {
+  const narrow = useNarrow();
   return (
     <ClientChart height={260}>
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} layout="vertical" margin={{ top: 4, right: 12, left: 8, bottom: 0 }}>
+      <ResponsiveContainer width="100%" height="100%" debounce={40}>
+        <BarChart data={data} layout="vertical" margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
           <CartesianGrid stroke="var(--dash-grid)" horizontal={false} />
-          <XAxis type="number" tickFormatter={compactUsd} tick={{ fontSize: 11, fill: "var(--dash-mute)" }} axisLine={false} tickLine={false} />
+          <XAxis type="number" tickFormatter={compactUsd} tick={{ fontSize: 10, fill: "var(--dash-mute)" }} axisLine={false} tickLine={false} />
           <YAxis
             type="category"
             dataKey="label"
-            width={108}
-            tick={{ fontSize: 11, fill: "var(--dash-mute)" }}
+            width={narrow ? 56 : 108}
+            tick={{ fontSize: 10, fill: "var(--dash-mute)" }}
             axisLine={false}
             tickLine={false}
           />
-          <Tooltip content={<Tip />} />
+          <Tooltip content={<Tip />} allowEscapeViewBox={{ x: false, y: false }} />
           <Bar dataKey="amount" name="Montant" fill="var(--dash-ink)" radius={[0, 6, 6, 0]} barSize={12} animationDuration={800} />
         </BarChart>
       </ResponsiveContainer>
@@ -180,6 +190,7 @@ export function SpendBars({ data }: { data: Array<{ label: string; amount: numbe
 }
 
 export function MixDonut({ usd, cdf }: { usd: number; cdf: number }) {
+  const narrow = useNarrow();
   const data = [
     { name: "USD", value: usd, color: "var(--dash-red)" },
     { name: "CDF éq.", value: cdf, color: "var(--dash-ink)" },
@@ -187,14 +198,14 @@ export function MixDonut({ usd, cdf }: { usd: number; cdf: number }) {
   const empty = data.length === 0;
   return (
     <ClientChart height={220}>
-      <ResponsiveContainer width="100%" height="100%">
-        <PieChart>
+      <ResponsiveContainer width="100%" height="100%" debounce={40}>
+        <PieChart margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
           <Pie
             data={empty ? [{ name: "—", value: 1, color: "var(--dash-grid)" }] : data}
             dataKey="value"
             nameKey="name"
-            innerRadius={58}
-            outerRadius={82}
+            innerRadius={narrow ? 44 : 58}
+            outerRadius={narrow ? 68 : 82}
             paddingAngle={empty ? 0 : 3}
             stroke="none"
           >
@@ -210,13 +221,14 @@ export function MixDonut({ usd, cdf }: { usd: number; cdf: number }) {
 }
 
 export function StatusBars({ data }: { data: Array<{ label: string; n: number }> }) {
+  const narrow = useNarrow();
   return (
     <ClientChart height={220}>
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} margin={{ top: 8, right: 4, left: 0, bottom: 0 }}>
           <CartesianGrid stroke="var(--dash-grid)" vertical={false} />
-          <XAxis dataKey="label" tick={{ fontSize: 10, fill: "var(--dash-mute)" }} axisLine={false} tickLine={false} interval={0} />
-          <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "var(--dash-mute)" }} axisLine={false} tickLine={false} width={28} />
+          <XAxis dataKey="label" tick={{ fontSize: 9, fill: "var(--dash-mute)" }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={8} />
+          <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: "var(--dash-mute)" }} axisLine={false} tickLine={false} width={22} hide={narrow} />
           <Tooltip />
           <Bar dataKey="n" name="Commandes" fill="var(--dash-red)" radius={[6, 6, 0, 0]} barSize={18} animationDuration={800} />
         </BarChart>
@@ -226,13 +238,14 @@ export function StatusBars({ data }: { data: Array<{ label: string; n: number }>
 }
 
 export function BoutiqueChart({ data }: { data: Array<{ name: string; ventes: number; full: string }> }) {
+  const narrow = useNarrow();
   return (
     <ClientChart height={240}>
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
           <CartesianGrid stroke="var(--dash-grid)" vertical={false} />
-          <XAxis dataKey="name" tick={{ fontSize: 11, fill: "var(--dash-mute)" }} axisLine={false} tickLine={false} />
-          <YAxis tickFormatter={compactUsd} tick={{ fontSize: 11, fill: "var(--dash-mute)" }} axisLine={false} tickLine={false} width={52} />
+          <XAxis dataKey="name" tick={{ fontSize: 10, fill: "var(--dash-mute)" }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+          <YAxis tickFormatter={compactUsd} tick={{ fontSize: 10, fill: "var(--dash-mute)" }} axisLine={false} tickLine={false} width={narrow ? 32 : 40} hide={narrow} />
           <Tooltip content={<Tip />} />
           <Bar dataKey="ventes" name="Caisse" fill="var(--dash-red)" radius={[6, 6, 0, 0]} barSize={26} animationDuration={800} />
         </BarChart>

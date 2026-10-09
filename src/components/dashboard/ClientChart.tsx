@@ -1,13 +1,29 @@
 import { useEffect, useState, type ReactNode } from "react";
 
+export function useNarrow(bp = 700) {
+  const [n, setN] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia(`(max-width: ${bp}px)`).matches : false,
+  );
+  useEffect(() => {
+    const q = window.matchMedia(`(max-width: ${bp}px)`);
+    const go = () => setN(q.matches);
+    go();
+    q.addEventListener("change", go);
+    return () => q.removeEventListener("change", go);
+  }, [bp]);
+  return n;
+}
+
 export function ClientChart({ children, height = 280 }: { children: ReactNode; height?: number }) {
   const [ready, setReady] = useState(false);
+  const narrow = useNarrow();
   useEffect(() => {
     setReady(true);
   }, []);
-  if (!ready) return <div className="dash-chart-skel" style={{ height }} aria-hidden />;
+  const h = height <= 48 ? height : narrow ? Math.min(height, 210) : height;
+  if (!ready) return <div className="dash-chart-skel" style={{ height: h }} aria-hidden />;
   return (
-    <div className="dash-chart" style={{ height }}>
+    <div className="dash-chart" style={{ height: h }}>
       {children}
     </div>
   );

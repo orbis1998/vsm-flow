@@ -16,7 +16,7 @@ import {
   type DashRange,
 } from "@/lib/dashboard";
 import { BoutiqueChart, MixDonut, Sparkline, SpendBars, StatusBars, TrendChart } from "@/components/dashboard/charts";
-import { useCountUp } from "@/components/dashboard/ClientChart";
+import { useCountUp, useNarrow } from "@/components/dashboard/ClientChart";
 import type { OrderStatus } from "@/types";
 
 const RANGES: DashRange[] = [7, 14, 30];
@@ -84,6 +84,7 @@ export function DashHome() {
   const purchaseOrders = useAppState((s) => s.purchaseOrders);
   const [range, setRange] = useState<DashRange>(7);
   const [metric, setMetric] = useState<Metric>("ventes");
+  const phone = useNarrow(900);
 
   const orders = scopedOrders(ordersAll, users, drivers, role, posteId);
   const sales = scopedSales(salesAll, role, posteId);
@@ -246,9 +247,11 @@ export function DashHome() {
                 </span>
                 <span className="dash-board__tab-row">
                   <strong className="num">{moneyUsd(t.value)}</strong>
-                  <span className={`dash-board__mini${sparkUp ? "" : " is-down"}`}>
-                    <Sparkline data={t.series} up={sparkUp} />
-                  </span>
+                  {!phone && (
+                    <span className={`dash-board__mini${sparkUp ? "" : " is-down"}`}>
+                      <Sparkline data={t.series} up={sparkUp} />
+                    </span>
+                  )}
                 </span>
               </button>
             );
