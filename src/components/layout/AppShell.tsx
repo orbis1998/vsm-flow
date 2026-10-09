@@ -130,7 +130,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pageBusy = navigating;
 
   const mine = useMemo(
-    () => notifications.filter((n) => !n.userId || n.userId === user.id),
+    () => notifications.filter((n) => n.userId === user.id),
     [notifications, user.id],
   );
   const unread = mine.filter((n) => !n.read);

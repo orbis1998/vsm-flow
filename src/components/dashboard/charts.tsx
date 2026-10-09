@@ -101,8 +101,7 @@ export function TrendChart({ data }: { data: VolumeRow[] }) {
               tick={{ fontSize: 10, fill: "var(--dash-mute)", fontFamily: "IBM Plex Mono, ui-monospace, monospace" }}
               axisLine={false}
               tickLine={false}
-              width={narrow ? 28 : 44}
-              hide={narrow}
+              width={narrow ? 36 : 52}
             />
             <Tooltip
               content={<VolumeTip />}
@@ -228,7 +227,7 @@ export function StatusBars({ data }: { data: Array<{ label: string; n: number }>
         <BarChart data={data} margin={{ top: 8, right: 4, left: 0, bottom: 0 }}>
           <CartesianGrid stroke="var(--dash-grid)" vertical={false} />
           <XAxis dataKey="label" tick={{ fontSize: 9, fill: "var(--dash-mute)" }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={8} />
-          <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: "var(--dash-mute)" }} axisLine={false} tickLine={false} width={22} hide={narrow} />
+          <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: "var(--dash-mute)" }} axisLine={false} tickLine={false} width={narrow ? 22 : 28} />
           <Tooltip />
           <Bar dataKey="n" name="Commandes" fill="var(--dash-red)" radius={[6, 6, 0, 0]} barSize={18} animationDuration={800} />
         </BarChart>
@@ -245,7 +244,7 @@ export function BoutiqueChart({ data }: { data: Array<{ name: string; ventes: nu
         <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
           <CartesianGrid stroke="var(--dash-grid)" vertical={false} />
           <XAxis dataKey="name" tick={{ fontSize: 10, fill: "var(--dash-mute)" }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
-          <YAxis tickFormatter={compactUsd} tick={{ fontSize: 10, fill: "var(--dash-mute)" }} axisLine={false} tickLine={false} width={narrow ? 32 : 40} hide={narrow} />
+          <YAxis tickFormatter={compactUsd} tick={{ fontSize: 10, fill: "var(--dash-mute)" }} axisLine={false} tickLine={false} width={narrow ? 36 : 52} />
           <Tooltip content={<Tip />} />
           <Bar dataKey="ventes" name="Caisse" fill="var(--dash-red)" radius={[6, 6, 0, 0]} barSize={26} animationDuration={800} />
         </BarChart>

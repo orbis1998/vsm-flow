@@ -94,19 +94,34 @@ async function pingManagers(
   queueManagerPing(payload);
 }
 
+function asUserId(value: unknown): string | undefined {
+  if (value == null) return undefined;
+  const id = String(value).trim();
+  if (!id || id === "null" || id === "undefined") return undefined;
+  return id;
+}
+
 async function pingUsers(
   userIds: Array<string | undefined | null>,
   payload: { title: string; message: string; level?: "info" | "alerte" | "critique"; href?: string },
 ): Promise<void> {
-  const ids = [...new Set(userIds.filter((id): id is string => Boolean(id)))];
+  const ids = [...new Set(userIds.map(asUserId).filter((id): id is string => Boolean(id)))];
   if (!ids.length) return;
   const { queueManagerPing } = await import("./db");
   queueManagerPing({ ...payload, userIds: ids });
 }
 
 async function livreurUserIds(client: Client): Promise<string[]> {
-  const res = await client.query("select id from users where status = 'actif' and role = 'LIVREUR'");
-  return res.rows.map((r) => String(r.id));
+  const res = await client.query(
+    `select u.id
+     from users u
+     where u.status = 'actif' and u.role = 'LIVREUR'
+       and exists (
+         select 1 from delivery_drivers d
+         where d.user_id = u.id and coalesce(d.active, true)
+       )`,
+  );
+  return res.rows.map((r) => String(r.id)).filter((id) => asUserId(id));
 }
 
 export async function pingDriverLocation(
@@ -541,6 +556,48 @@ async function consumeDriverStockFlexible(
   return leftover;
 }
 
+function stockAlreadyHeld(items: Array<{ from_driver?: unknown }>): boolean {
+  return items.some((it) => it.from_driver != null);
+}
+
+async function driverOnHand(client: Client, driverId: string, productId: string): Promise<number> {
+  const res = await client.query(
+    `select coalesce(sum(quantity), 0) as n from driver_stock
+     where driver_id = $1 and product_id = $2`,
+    [driverId, productId],
+  );
+  return Number(res.rows[0]?.n ?? 0);
+}
+
+async function boutiqueOnHand(client: Client, variantId: string | undefined): Promise<number> {
+  if (!variantId) return 0;
+  const stock = await client.query("select stock from product_variants where id = $1", [variantId]);
+  return Number(stock.rows[0]?.stock ?? 0);
+}
+
+async function assertCanFulfill(
+  client: Client,
+  items: Array<{ productId: string; variantId?: string; productName: string; quantity: number }>,
+  driverId?: string | null,
+): Promise<void> {
+  const bagUsed: Record<string, number> = {};
+  for (const it of items) {
+    const boutique = await boutiqueOnHand(client, it.variantId);
+    const bag = driverId ? await driverOnHand(client, driverId, it.productId) : 0;
+    const driverLeft = Math.max(0, bag - (bagUsed[it.productId] ?? 0));
+    const fromDriver = Math.min(driverLeft, it.quantity);
+    const needBoutique = it.quantity - fromDriver;
+    if (needBoutique > boutique) {
+      throw new Error(
+        driverId
+          ? `${it.productName} : stock insuffisant (livreur ${driverLeft}, boutique ${boutique}, demandé ${it.quantity}).`
+          : `${it.productName} : stock insuffisant (${boutique} restant).`,
+      );
+    }
+    bagUsed[it.productId] = (bagUsed[it.productId] ?? 0) + fromDriver;
+  }
+}
+
 async function takeDriverOrderItems(
   client: Client,
   driverId: string,
@@ -663,16 +720,16 @@ export async function createOrder(client: Client, input: OrderCreateInput): Prom
     if (!found.rows[0]) customerId = null;
   }
   const assigned = input.driverId ? await resolveDriver(client, input.driverId) : null;
-  if (!assigned) {
-    for (const it of input.items) {
-      if (!it.variantId) throw new Error(`Stock indisponible pour ${it.productName}`);
-      const stock = await client.query("select stock from product_variants where id = $1", [it.variantId]);
-      const available = Number(stock.rows[0]?.stock ?? 0);
-      if (available < it.quantity) {
-        throw new Error(`${it.productName} : stock insuffisant (${available} restant).`);
-      }
-    }
-  }
+  await assertCanFulfill(
+    client,
+    input.items.map((it) => ({
+      productId: it.productId,
+      variantId: it.variantId,
+      productName: it.productName,
+      quantity: Math.max(1, Math.round(Number(it.quantity) || 0)),
+    })),
+    assigned?.id,
+  );
   const id = nextId("ord");
   const createdAt = nowIso();
   const items: OrderItem[] = input.items.map((it, i) => ({
@@ -728,29 +785,25 @@ export async function createOrder(client: Client, input: OrderCreateInput): Prom
      values ($1,$2,$3,$4,$5,$6)`,
     [evtId, id, status, createdNote, who.fullName, createdAt],
   );
-  if (assigned) {
-    await takeDriverOrderItems(
-      client,
-      assigned.id,
-      items.map((it) => ({
-        id: it.id,
-        product_id: it.productId,
-        variant_id: it.variantId,
-        quantity: it.quantity,
-        product_name: it.productName,
-      })),
-      who.id,
-      reference,
-    );
-  }
   await audit(client, "Création commande", "Order", reference);
   const ping = {
     title: `Nouvelle commande ${reference}`,
     message: `${customerName}${assigned ? ` · ${assigned.fullName}` : ""}`,
   };
   await pingManagers(client, { ...ping, href: "/commandes" });
-  const driverRecipients = assigned?.userId ? [assigned.userId] : await livreurUserIds(client);
-  await pingUsers(driverRecipients, { ...ping, href: "/livreur" });
+  if (assigned) {
+    await pingUsers([assigned.userId], {
+      title: `Course assignée ${reference}`,
+      message: `${customerName} — à livrer`,
+      href: "/livreur",
+    });
+  } else {
+    await pingUsers(await livreurUserIds(client), {
+      title: `Nouvelle commande ${reference}`,
+      message: `${customerName} — non assignée`,
+      href: "/livreur",
+    });
+  }
   return {
     id,
     reference,
@@ -792,29 +845,23 @@ export async function updateOrderStatus(
   const receivedUsd = received?.receivedUsd ?? Number(order.received_usd ?? 0);
   const receivedCdf = received?.receivedCdf ?? Number(order.received_cdf ?? 0);
   const paymentState = status === "livree" ? "paye" : order.payment_state;
-  await client.query(
-    "update orders set status = $2, payment_state = $3, received_usd = $4, received_cdf = $5 where id = $1",
-    [id, status, paymentState, receivedUsd, receivedCdf],
-  );
-  await client.query(
-    `insert into order_events (id, order_id, status, note, user_name, created_at)
-     values ($1,$2,$3,$4,$5, now())`,
-    [nextId("evt"), id, status, note, who.fullName],
-  );
   if (status === "livree" && order.status !== "livree") {
-    try {
-      await client.query("savepoint after_status");
-      const items = await client.query("select * from order_items where order_id = $1", [id]);
+    const items = await client.query("select * from order_items where order_id = $1", [id]);
+    if (!stockAlreadyHeld(items.rows)) {
       if (order.driver_id) {
-        for (const it of items.rows) {
-          await consumeDriverStock(
-            client,
-            String(order.driver_id),
-            String(it.product_id),
-            it.variant_id ? String(it.variant_id) : undefined,
-            Number(it.quantity),
-          );
-        }
+        await takeDriverOrderItems(
+          client,
+          String(order.driver_id),
+          items.rows.map((it) => ({
+            id: it.id,
+            product_id: it.product_id,
+            variant_id: it.variant_id,
+            quantity: it.quantity,
+            product_name: it.product_name,
+          })),
+          who.id,
+          String(order.reference),
+        );
       } else {
         for (const it of items.rows) {
           await adjustVariantStock(
@@ -829,6 +876,19 @@ export async function updateOrderStatus(
           );
         }
       }
+    }
+  }
+  await client.query(
+    "update orders set status = $2, payment_state = $3, received_usd = $4, received_cdf = $5 where id = $1",
+    [id, status, paymentState, receivedUsd, receivedCdf],
+  );
+  await client.query(
+    `insert into order_events (id, order_id, status, note, user_name, created_at)
+     values ($1,$2,$3,$4,$5, now())`,
+    [nextId("evt"), id, status, note, who.fullName],
+  );
+  if (status === "livree" && order.status !== "livree") {
+    try {
       await client.query(
         `insert into financial_transactions (id, reference, type, label, amount, direction, created_at)
          values ($1,$2,'encaissement',$3,$4,'entree', now())`,
@@ -839,13 +899,8 @@ export async function updateOrderStatus(
           Number(order.products_total) || 0,
         ],
       );
-      await client.query("release savepoint after_status");
     } catch {
-      try {
-        await client.query("rollback to savepoint after_status");
-      } catch {
-        // ignore
-      }
+      // l'encaissement ne doit pas annuler la livraison
     }
   }
   await syncDeliveryRow(
@@ -862,10 +917,24 @@ export async function updateOrderStatus(
     echec: "en échec",
   };
   if ((status === "annulee" || status === "retour") && !["annulee", "retour"].includes(String(order.status))) {
+    const held = await client.query("select * from order_items where order_id = $1", [id]);
     const driverId = order.driver_id ? String(order.driver_id) : null;
-    if (driverId && ["assignee", "en_livraison", "livree"].includes(String(order.status))) {
-      const held = await client.query("select * from order_items where order_id = $1", [id]);
+    const wasDelivered = String(order.status) === "livree";
+    if (driverId && (wasDelivered || stockAlreadyHeld(held.rows))) {
       await restoreDriverOrderItems(client, driverId, held.rows, who.id, String(order.reference));
+    } else if (wasDelivered) {
+      for (const it of held.rows) {
+        await adjustVariantStock(
+          client,
+          it.variant_id ? String(it.variant_id) : undefined,
+          String(it.product_id),
+          Number(it.quantity),
+          "entree",
+          who.id,
+          `Retour ${order.reference}`,
+          String(order.reference),
+        );
+      }
     }
   }
   if (labels[status]) {
@@ -887,7 +956,7 @@ async function resolveDriver(
     return {
       id: String(byId.rows[0].id),
       fullName: String(byId.rows[0].full_name),
-      userId: String(byId.rows[0].user_id),
+      userId: asUserId(byId.rows[0].user_id) ?? "",
     };
   }
   const byUser = await client.query("select id, full_name, user_id from delivery_drivers where user_id = $1", [driverId]);
@@ -895,7 +964,7 @@ async function resolveDriver(
     return {
       id: String(byUser.rows[0].id),
       fullName: String(byUser.rows[0].full_name),
-      userId: String(byUser.rows[0].user_id),
+      userId: asUserId(byUser.rows[0].user_id) ?? "",
     };
   }
   const user = await client.query(
@@ -916,7 +985,7 @@ async function resolveDriver(
       return {
         id: String(again.rows[0].id),
         fullName: String(again.rows[0].full_name),
-        userId: String(again.rows[0].user_id),
+        userId: asUserId(again.rows[0].user_id) ?? String(user.rows[0].id),
       };
     }
   }
@@ -935,29 +1004,29 @@ export async function assignDriver(client: Client, id: ID, driverId: ID): Promis
   const alreadyDelivered = current.rows[0].status === "livree";
   const status = alreadyDelivered ? "livree" : "assignee";
   const items = await client.query("select * from order_items where order_id = $1", [id]);
-  if (!alreadyDelivered && prevDriverId && prevDriverId !== driver.id) {
-    await restoreDriverOrderItems(
-      client,
-      prevDriverId,
-      items.rows,
-      who.id,
-      String(current.rows[0].reference),
-    );
-  }
-  if (!alreadyDelivered && prevDriverId !== driver.id) {
-    await takeDriverOrderItems(
-      client,
-      driver.id,
-      items.rows.map((row) => ({
-        id: row.id,
-        product_id: row.product_id,
-        variant_id: row.variant_id,
-        quantity: row.quantity,
-        product_name: row.product_name,
-      })),
-      who.id,
-      String(current.rows[0].reference),
-    );
+  const mapped = items.rows.map((row) => ({
+    id: row.id,
+    product_id: row.product_id,
+    variant_id: row.variant_id,
+    quantity: row.quantity,
+    product_name: row.product_name,
+    from_driver: row.from_driver,
+  }));
+  if (prevDriverId !== driver.id && (alreadyDelivered || stockAlreadyHeld(items.rows))) {
+    if (prevDriverId) {
+      await restoreDriverOrderItems(
+        client,
+        prevDriverId,
+        items.rows,
+        who.id,
+        String(current.rows[0].reference),
+      );
+    }
+    if (alreadyDelivered) {
+      await takeDriverOrderItems(client, driver.id, mapped, who.id, String(current.rows[0].reference));
+    } else {
+      await client.query("update order_items set from_driver = null where order_id = $1", [id]);
+    }
   }
   await client.query("update orders set driver_id = $2, status = $3 where id = $1", [id, driver.id, status]);
   await client.query(
@@ -973,7 +1042,7 @@ export async function assignDriver(client: Client, id: ID, driverId: ID): Promis
     message,
     href: "/commandes",
   });
-  await pingUsers([driver.userId], {
+  await pingUsers([asUserId(driver.userId)], {
     title,
     message: `${current.rows[0].customer_name} — à livrer`,
     href: "/livreur",
@@ -1019,8 +1088,8 @@ export async function replaceOrderItems(
   const oldItems = await client.query("select * from order_items where order_id = $1", [id]);
   const delivered = order.status === "livree";
   const driverId = order.driver_id ? String(order.driver_id) : null;
-  const driverHeld = Boolean(driverId && ["assignee", "en_livraison", "livree"].includes(String(order.status)));
-  if (driverHeld && driverId) {
+  const held = Boolean(driverId && (delivered || stockAlreadyHeld(oldItems.rows)));
+  if (held && driverId) {
     await restoreDriverOrderItems(client, driverId, oldItems.rows, who.id, String(order.reference));
   } else if (delivered) {
     for (const it of oldItems.rows) {
@@ -1044,7 +1113,7 @@ export async function replaceOrderItems(
        values ($1,$2,$3,$4,$5,$6,$7,$8)`,
       [it.id, id, it.productId, it.variantId ?? null, it.productName, it.quantity, it.unitPrice, it.discount],
     );
-    if (!driverHeld && delivered) {
+    if (!held && delivered) {
       await adjustVariantStock(
         client,
         it.variantId,
@@ -1057,7 +1126,7 @@ export async function replaceOrderItems(
       );
     }
   }
-  if (driverHeld && driverId) {
+  if (held && driverId && delivered) {
     await takeDriverOrderItems(
       client,
       driverId,
@@ -1095,10 +1164,11 @@ export async function removeOrder(client: Client, id: ID): Promise<void> {
   const items = await client.query("select * from order_items where order_id = $1", [id]);
   const who = await actor(client);
   const driverId = order.driver_id ? String(order.driver_id) : null;
-  const driverHeld = driverId && ["assignee", "en_livraison", "livree"].includes(String(order.status));
-  if (driverHeld) {
+  const delivered = order.status === "livree";
+  const held = Boolean(driverId && (delivered || stockAlreadyHeld(items.rows)));
+  if (held && driverId) {
     await restoreDriverOrderItems(client, driverId, items.rows, who.id, String(order.reference));
-  } else if (order.status === "livree") {
+  } else if (delivered) {
     for (const it of items.rows) {
       await adjustVariantStock(
         client,
