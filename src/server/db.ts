@@ -98,7 +98,7 @@ async function grabClient(): Promise<pg.PoolClient> {
   throw last;
 }
 
-const SCHEMA_VERSION = 11;
+const SCHEMA_VERSION = 12;
 
 export type ManagerPing = {
   title: string;
@@ -154,6 +154,7 @@ async function prepare(client: pg.PoolClient) {
   }
   try {
     await client.query(`alter table orders add column if not exists due_at timestamptz`);
+    await client.query(`alter table orders add column if not exists delivered_at timestamptz`);
   } catch {
     // colonne déjà présente ou connexion interrompue
   }
@@ -183,6 +184,18 @@ async function prepare(client: pg.PoolClient) {
   await client.query(`alter table orders add column if not exists poste_id text`);
   await client.query(`alter table notifications add column if not exists href text`);
   await client.query(`alter table orders add column if not exists due_at timestamptz`);
+  await client.query(`alter table orders add column if not exists delivered_at timestamptz`);
+  await client.query(`
+    update orders o
+    set delivered_at = e.created_at
+    from (
+      select distinct on (order_id) order_id, created_at
+      from order_events
+      where status = 'livree'
+      order by order_id, created_at desc
+    ) e
+    where o.id = e.order_id and o.status = 'livree' and o.delivered_at is null
+  `);
   await client.query(`alter table sales add column if not exists kind text not null default 'comptoir'`);
   await client.query(`alter table order_items add column if not exists from_driver integer`);
   await client.query(`alter table delivery_drivers add column if not exists last_lat double precision`);

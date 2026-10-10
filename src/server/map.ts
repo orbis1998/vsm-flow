@@ -275,6 +275,10 @@ export function mapOrder(
   if (posteId) order.posteId = posteId;
   const dueAt = optIso(row.due_at);
   if (dueAt) order.dueAt = dueAt;
+  const deliveredAt =
+    optIso(row.delivered_at) ??
+    [...history].reverse().find((h) => h.status === "livree")?.createdAt;
+  if (deliveredAt) order.deliveredAt = deliveredAt;
   return order;
 }
 

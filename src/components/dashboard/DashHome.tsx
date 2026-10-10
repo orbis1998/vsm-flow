@@ -11,6 +11,7 @@ import {
   changePct,
   dayLabel,
   merchOn,
+  orderBookedAt,
   rangeDays,
   spentOn,
   type DashRange,
@@ -117,15 +118,17 @@ export function DashHome() {
   const dSpend = changePct(spentPeriod, spentPrevPeriod);
   const dNet = changePct(netPeriod, netPrevPeriod);
 
+  const deliveredToday = orders.filter((o) => {
+    const booked = orderBookedAt(o);
+    return Boolean(booked && ymdOf(booked) === today);
+  });
   const recUsdToday =
     sales.filter((s) => ymdOf(s.createdAt) === today).reduce((n, s) => n + s.receivedUsd, 0) +
-    orders.filter((o) => o.status === "livree" && ymdOf(o.createdAt) === today).reduce((n, o) => n + o.receivedUsd, 0);
+    deliveredToday.reduce((n, o) => n + o.receivedUsd, 0);
   const recCdfToday =
     sales.filter((s) => ymdOf(s.createdAt) === today).reduce((n, s) => n + s.receivedCdf, 0) +
-    orders.filter((o) => o.status === "livree" && ymdOf(o.createdAt) === today).reduce((n, o) => n + o.receivedCdf, 0);
-  const feesCdfToday = orders
-    .filter((o) => o.status === "livree" && ymdOf(o.createdAt) === today)
-    .reduce((n, o) => n + o.deliveryFee, 0);
+    deliveredToday.reduce((n, o) => n + o.receivedCdf, 0);
+  const feesCdfToday = deliveredToday.reduce((n, o) => n + o.deliveryFee, 0);
 
   const cats = byExpenseCat(expenses, purchaseOrders, days);
   const shops = global ? boutiqueBars(postes, sales, days) : [];

@@ -314,6 +314,7 @@ export interface Order {
   receivedUsd: number;
   receivedCdf: number;
   createdAt: ISODate;
+  deliveredAt?: ISODate | undefined;
   history: OrderEvent[];
 }
 

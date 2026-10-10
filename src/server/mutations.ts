@@ -878,10 +878,23 @@ export async function updateOrderStatus(
       }
     }
   }
-  await client.query(
-    "update orders set status = $2, payment_state = $3, received_usd = $4, received_cdf = $5 where id = $1",
-    [id, status, paymentState, receivedUsd, receivedCdf],
-  );
+  const deliveredAt =
+    status === "livree"
+      ? (order.delivered_at ?? new Date().toISOString())
+      : String(order.status) === "livree"
+        ? null
+        : (order.delivered_at ?? null);
+  try {
+    await client.query(
+      "update orders set status = $2, payment_state = $3, received_usd = $4, received_cdf = $5, delivered_at = $6 where id = $1",
+      [id, status, paymentState, receivedUsd, receivedCdf, deliveredAt],
+    );
+  } catch {
+    await client.query(
+      "update orders set status = $2, payment_state = $3, received_usd = $4, received_cdf = $5 where id = $1",
+      [id, status, paymentState, receivedUsd, receivedCdf],
+    );
+  }
   await client.query(
     `insert into order_events (id, order_id, status, note, user_name, created_at)
      values ($1,$2,$3,$4,$5, now())`,
