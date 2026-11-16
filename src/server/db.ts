@@ -98,7 +98,7 @@ async function grabClient(): Promise<pg.PoolClient> {
   throw last;
 }
 
-const SCHEMA_VERSION = 12;
+const SCHEMA_VERSION = 14;
 
 export type ManagerPing = {
   title: string;
@@ -149,6 +149,7 @@ async function prepare(client: pg.PoolClient) {
   try {
     await ensureDriverStock(client);
     await ensureDriverTrail(client);
+    await ensureNotificationSounds(client);
   } catch {
     // la page doit quand même charger si la table n'est pas encore là
   }
@@ -194,7 +195,7 @@ async function prepare(client: pg.PoolClient) {
       where status = 'livree'
       order by order_id, created_at desc
     ) e
-    where o.id = e.order_id and o.status = 'livree' and o.delivered_at is null
+    where o.id = e.order_id and o.status = 'livree'
   `);
   await client.query(`alter table sales add column if not exists kind text not null default 'comptoir'`);
   await client.query(`alter table order_items add column if not exists from_driver integer`);
@@ -224,6 +225,7 @@ async function prepare(client: pg.PoolClient) {
   `);
   await ensureDriverStock(client);
   await ensureDriverTrail(client);
+  await ensureNotificationSounds(client);
   tagged.__vsmSchema = SCHEMA_VERSION;
 }
 
@@ -249,6 +251,18 @@ export async function ensureDriverStock(client: pg.PoolClient) {
       product_id text not null references products(id) on delete cascade,
       variant_id text references product_variants(id) on delete set null,
       quantity integer not null default 0,
+      updated_at timestamptz not null default now()
+    )
+  `);
+}
+
+export async function ensureNotificationSounds(client: pg.PoolClient) {
+  await client.query(`
+    create table if not exists notification_sounds (
+      event text primary key,
+      file_name text not null,
+      mime text not null,
+      data_url text not null,
       updated_at timestamptz not null default now()
     )
   `);

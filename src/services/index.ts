@@ -3,7 +3,7 @@
  * L'UI lit l'état avec useAppState (TanStack Query).
  */
 import { getAppStateFn, mutateAppFn, type AppMutation } from "@/fn/app";
-import { refreshAppState } from "@/lib/query-client";
+import { refreshAppState, refreshNotifySounds } from "@/lib/query-client";
 import type {
   Customer,
   Expense,
@@ -232,6 +232,19 @@ export const notificationsService = {
 export const settingsService = {
   async updateCompany(patch: Partial<import("@/types").CompanySettings>) {
     await mutate({ op: "settings.company", patch });
+  },
+  async uploadNotifySound(input: {
+    event: import("@/types").NotificationSoundEvent;
+    fileName: string;
+    mime: string;
+    dataUrl: string;
+  }) {
+    await mutate({ op: "settings.notifySound", input });
+    await refreshNotifySounds();
+  },
+  async removeNotifySound(event: import("@/types").NotificationSoundEvent) {
+    await mutate({ op: "settings.notifySound.remove", event });
+    await refreshNotifySounds();
   },
   async createPoste(input: { name: string; address: string; type: "boutique" | "entrepot" | "mobile" }) {
     await mutate({ op: "poste.create", input });

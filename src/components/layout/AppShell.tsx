@@ -23,11 +23,13 @@ import {
 } from "lucide-react";
 import { useSession } from "@/hooks/useSession";
 import { usePushNotifications } from "@/hooks/usePush";
+import { useNotifySoundMap } from "@/hooks/useNotifySounds";
 import { useAppState } from "@/lib/app-store";
 import { ROLES } from "@/lib/roles";
 import { isGlobalRole } from "@/lib/boutique";
 import { APP_NAME } from "@/lib/brand";
 import { dateTime, initials } from "@/lib/format";
+import { inferNotifySound, playNotifySound, unlockNotifyAudio } from "@/lib/notify-sounds";
 import { notificationsService } from "@/services";
 import { LogoMark } from "@/components/brand/LogoMark";
 import { Button } from "@/components/ui/button";
@@ -124,6 +126,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const postes = useAppState((s) => s.postes);
   const notifications = useAppState((s) => s.notifications);
+  const soundMap = useNotifySoundMap();
   const path = useRouterState({ select: (s) => s.location.pathname });
   const navigating = useRouterState({ select: (s) => s.isLoading });
   const push = usePushNotifications(user.id);
@@ -138,6 +141,16 @@ export function AppShell({ children }: { children: ReactNode }) {
   const primed = useRef(false);
 
   useEffect(() => {
+    const unlock = () => unlockNotifyAudio();
+    window.addEventListener("pointerdown", unlock, { once: true });
+    window.addEventListener("keydown", unlock, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!primed.current) {
       mine.forEach((n) => seen.current.add(n.id));
       primed.current = true;
@@ -147,8 +160,11 @@ export function AppShell({ children }: { children: ReactNode }) {
       if (seen.current.has(n.id)) continue;
       seen.current.add(n.id);
       toast(n.title, { description: n.message });
+      const event = inferNotifySound(n.title, n.message);
+      const sound = event ? soundMap.get(event) : undefined;
+      if (event && sound?.dataUrl) playNotifySound(event, sound.dataUrl);
     }
-  }, [mine, unread]);
+  }, [mine, unread, soundMap]);
 
   const mobilePaths = MOBILE_BY_ROLE[role] ?? ["/", "/commandes", "/pos", "/gros"];
   const mobileNav = NAV.filter(

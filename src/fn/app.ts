@@ -4,6 +4,7 @@ import type {
   Customer,
   Expense,
   ID,
+  NotificationSoundEvent,
   Order,
   OrderItem,
   OrderStatus,
@@ -79,6 +80,11 @@ export type AppMutation =
   | { op: "user.password"; id: ID; password: string }
   | { op: "notifications.readAll"; userId?: ID }
   | { op: "settings.company"; patch: Partial<CompanySettings> }
+  | {
+      op: "settings.notifySound";
+      input: { event: NotificationSoundEvent; fileName: string; mime: string; dataUrl: string };
+    }
+  | { op: "settings.notifySound.remove"; event: NotificationSoundEvent }
   | { op: "poste.create"; input: { name: string; address: string; type: "boutique" | "entrepot" | "mobile" } }
   | { op: "poste.update"; id: ID; patch: { name?: string; address?: string; type?: "boutique" | "entrepot" | "mobile" } }
   | { op: "poste.remove"; id: ID }
@@ -92,6 +98,12 @@ export type AppMutation =
 export const getAppStateFn = createServerFn({ method: "GET" }).handler(async () => {
   const { loadAppState } = await import("@/server/snapshot");
   return loadAppState();
+});
+
+export const getNotificationSoundsFn = createServerFn({ method: "GET" }).handler(async () => {
+  const { withClient } = await import("@/server/db");
+  const m = await import("@/server/mutations");
+  return withClient((client) => m.listNotificationSounds(client));
 });
 
 export const getFleetLiveFn = createServerFn({ method: "GET" }).handler(async () => {
@@ -213,6 +225,12 @@ export const mutateAppFn = createServerFn({ method: "POST", strict: false })
           return null;
         case "settings.company":
           await m.updateCompany(client, data.patch);
+          return null;
+        case "settings.notifySound":
+          await m.upsertNotificationSound(client, data.input);
+          return null;
+        case "settings.notifySound.remove":
+          await m.removeNotificationSound(client, data.event);
           return null;
         case "poste.create":
           return m.createPoste(client, data.input);

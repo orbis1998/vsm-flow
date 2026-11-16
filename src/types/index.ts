@@ -87,6 +87,25 @@ export interface AppNotification {
   href?: string | undefined;
 }
 
+export type NotificationSoundEvent =
+  | "nouvelle"
+  | "assignee"
+  | "en_livraison"
+  | "livree"
+  | "echec"
+  | "stock_recu";
+
+export interface NotificationSoundMeta {
+  event: NotificationSoundEvent;
+  fileName: string;
+  mime: string;
+  updatedAt: ISODate;
+}
+
+export interface NotificationSound extends NotificationSoundMeta {
+  dataUrl: string;
+}
+
 /* --------------------------------- Catalogue -------------------------------- */
 
 export interface Category {

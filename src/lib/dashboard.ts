@@ -21,11 +21,17 @@ function inDay(iso: string, ymd: string) {
   return ymdOf(iso) === ymd;
 }
 
-/** Date comptable d'une livraison : clic « livrer », pas la création. */
+/** Date comptable d'une livraison : clic « Livrer », jamais la création ni l'échéance. */
 export function orderBookedAt(order: Order): string | undefined {
   if (order.status !== "livree") return undefined;
-  if (order.deliveredAt) return order.deliveredAt;
-  return [...order.history].reverse().find((h) => h.status === "livree")?.createdAt;
+  const lastLivree = order.history
+    .filter((h) => h.status === "livree")
+    .map((h) => h.createdAt)
+    .sort()
+    .at(-1);
+  const stamps = [order.deliveredAt, lastLivree].filter((v): v is string => Boolean(v));
+  if (!stamps.length) return undefined;
+  return stamps.sort().at(-1);
 }
 
 export function merchOn(sales: Sale[], orders: Order[], ymd: string) {

@@ -1,12 +1,20 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { useAppState } from "@/lib/app-store";
 import { settingsService } from "@/services";
 import { useSession } from "@/hooks/useSession";
+import { useNotifySounds } from "@/hooks/useNotifySounds";
 import { APP_NAME } from "@/lib/brand";
 import { moneyCdf } from "@/lib/format";
 import { AmountInput, toNumber } from "@/lib/amount";
+import {
+  NOTIFY_SOUND_EVENTS,
+  NOTIFY_SOUND_HINTS,
+  NOTIFY_SOUND_LABELS,
+  playNotifySound,
+  readNotifySoundFile,
+} from "@/lib/notify-sounds";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,8 +24,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Forbidden, PageHeader } from "@/components/common/ui-bits";
 import { BoutiqueCard } from "@/components/common/BoutiqueCard";
-import { Pencil, Trash2 } from "lucide-react";
-import type { Poste } from "@/types";
+import { Pencil, Play, Trash2, Upload } from "lucide-react";
+import type { NotificationSoundEvent, Poste } from "@/types";
 
 export const Route = createFileRoute("/parametres")({
   head: () => ({
@@ -47,6 +55,7 @@ function SettingsPage() {
           <TabsTrigger value="entreprise">Entreprise</TabsTrigger>
           <TabsTrigger value="postes">Boutiques</TabsTrigger>
           <TabsTrigger value="livraison">Grille livraison</TabsTrigger>
+          <TabsTrigger value="notifications">Notifications</TabsTrigger>
         </TabsList>
         <TabsContent value="entreprise" className="max-w-lg space-y-3">
           <div>
@@ -300,7 +309,122 @@ function SettingsPage() {
             </Table>
           </div>
         </TabsContent>
+        <TabsContent value="notifications" className="space-y-4">
+          <NotifySoundsPanel canManage={can("settings.manage")} />
+        </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+function NotifySoundsPanel({ canManage }: { canManage: boolean }) {
+  const { data: sounds = [], isLoading } = useNotifySounds();
+  const [busy, setBusy] = useState<NotificationSoundEvent | null>(null);
+  const inputRefs = useRef<Partial<Record<NotificationSoundEvent, HTMLInputElement | null>>>({});
+
+  const byEvent = new Map(sounds.map((s) => [s.event, s]));
+
+  const upload = async (event: NotificationSoundEvent, file: File | undefined) => {
+    if (!file || !canManage || busy) return;
+    setBusy(event);
+    try {
+      const payload = await readNotifySoundFile(file);
+      await settingsService.uploadNotifySound({ event, ...payload });
+      toast.success(`Son « ${NOTIFY_SOUND_LABELS[event]} » enregistré`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Upload impossible");
+    } finally {
+      setBusy(null);
+      const input = inputRefs.current[event];
+      if (input) input.value = "";
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-muted-foreground">
+        Téléversez un fichier audio depuis votre appareil pour chaque événement. Aucun son par défaut, aucun lien
+        externe — seul le fichier que vous importez est joué.
+      </p>
+      {isLoading ? (
+        <p className="text-sm text-muted-foreground">Chargement…</p>
+      ) : (
+        <div className="space-y-3">
+          {NOTIFY_SOUND_EVENTS.map((event) => {
+            const current = byEvent.get(event);
+            return (
+              <div key={event} className="rounded-md border p-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium">{NOTIFY_SOUND_LABELS[event]}</div>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{NOTIFY_SOUND_HINTS[event]}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {current ? `Fichier : ${current.fileName}` : "Aucun son configuré"}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {current && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => playNotifySound(event, current.dataUrl)}
+                      >
+                        <Play className="mr-1 h-3.5 w-3.5" />
+                        Tester
+                      </Button>
+                    )}
+                    {canManage && (
+                      <>
+                        <input
+                          ref={(el) => {
+                            inputRefs.current[event] = el;
+                          }}
+                          type="file"
+                          accept="audio/*"
+                          className="hidden"
+                          onChange={(e) => void upload(event, e.target.files?.[0])}
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={busy === event}
+                          onClick={() => inputRefs.current[event]?.click()}
+                        >
+                          <Upload className="mr-1 h-3.5 w-3.5" />
+                          {busy === event ? "Envoi…" : current ? "Remplacer" : "Téléverser"}
+                        </Button>
+                        {current && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            disabled={busy === event}
+                            onClick={async () => {
+                              setBusy(event);
+                              try {
+                                await settingsService.removeNotifySound(event);
+                                toast.success("Son retiré");
+                              } catch (error) {
+                                toast.error(error instanceof Error ? error.message : "Suppression impossible");
+                              } finally {
+                                setBusy(null);
+                              }
+                            }}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <p className="text-xs text-muted-foreground">Formats : mp3, wav, ogg, m4a. Taille max 512 Ko par son.</p>
     </div>
   );
 }

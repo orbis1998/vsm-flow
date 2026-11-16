@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { Plus, Trash2 } from "lucide-react";
 import { useAppState } from "@/lib/app-store";
 import { communeName, zoneName } from "@/lib/geo";
-import { driverProductQty, driverVariantQty, pickAvailableVariant, productStock } from "@/lib/catalog";
+import { driverVariantQty, pickAvailableVariant, productStock } from "@/lib/catalog";
 import { dateTime, dueAtFromKinshasaTime, moneyCdf, moneyUsd, ORDER_STATUS_LABEL, ORDER_STATUS_ORDER, timeKinshasa } from "@/lib/format";
 import { APP_NAME } from "@/lib/brand";
 import { variantLabel } from "@/lib/variants";
@@ -292,7 +292,7 @@ function OrderSheet({ order, onClose }: { order: Order | null; onClose: () => vo
                     </Select>
                   </div>
                   <div className="min-w-0">
-                    <Label>Livreur (son stock d'abord, sinon la boutique)</Label>
+                    <Label>Livreur (son sac, sinon la boutique — jamais un autre livreur)</Label>
                     {drivers.length === 0 ? (
                       <p className="mt-1 text-xs text-muted-foreground">
                         Aucun livreur. Créez un compte rôle Livreur dans Équipe.
@@ -395,7 +395,11 @@ function NewOrderDialog({
   const productQty = (p: { id: string; variants: Array<{ id: string; stock: number }> }) => {
     const boutique = productStock(p as never);
     if (!driverId) return boutique;
-    return Math.max(driverProductQty(driverStock, driverId, p.id), boutique);
+    const bag = p.variants.reduce(
+      (sum, v) => sum + driverVariantQty(driverStock, driverId, p.id, v.id),
+      0,
+    );
+    return Math.max(bag, boutique);
   };
   const available = products.filter((p) => productQty(p) > 0);
   const selectedProduct = products.find((p) => p.id === productId);
@@ -416,12 +420,7 @@ function NewOrderDialog({
       toast.error("Choisissez une variante");
       return;
     }
-    const driverHave = driverId
-      ? Math.max(
-          driverVariantQty(driverStock, driverId, p.id, variant.id),
-          driverProductQty(driverStock, driverId, p.id),
-        )
-      : 0;
+    const driverHave = driverId ? driverVariantQty(driverStock, driverId, p.id, variant.id) : 0;
     const boutiqueHave = variant.stock;
     if (driverHave < 1 && boutiqueHave < 1) {
       toast.error(`${p.name} : rupture de stock (livreur et boutique)`);
@@ -643,7 +642,7 @@ function NewOrderDialog({
             </div>
           </div>
           <div>
-            <Label>Livreur (facultatif — son stock d'abord, sinon la boutique)</Label>
+            <Label>Livreur (facultatif — son sac, sinon la boutique)</Label>
             {drivers.length === 0 ? (
               <p className="mt-1 text-xs text-muted-foreground">Aucun livreur. Créez un compte rôle Livreur dans Équipe.</p>
             ) : (

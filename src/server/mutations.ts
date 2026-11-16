@@ -7,6 +7,8 @@ import type {
   Customer,
   Expense,
   ID,
+  NotificationSound,
+  NotificationSoundEvent,
   Order,
   OrderItem,
   OrderStatus,
@@ -23,6 +25,7 @@ import type {
   Commune,
   DeliveryZone,
 } from "@/types";
+import { isNotifySoundEvent, MAX_NOTIFY_SOUND_BYTES } from "@/lib/notify-sounds";
 
 type Client = PoolClient;
 
@@ -482,17 +485,20 @@ async function consumeDriverStock(
   const row = await client.query(
     `select id, quantity from driver_stock
      where driver_id = $1 and product_id = $2
-       and coalesce(variant_id, '') = coalesce($3, '')`,
+       and coalesce(variant_id, '') = coalesce($3, '')
+     limit 1`,
     [driverId, productId, variantId ?? ""],
   );
   if (!row.rows[0]) return quantity;
   const have = Number(row.rows[0].quantity ?? 0);
   const take = Math.min(have, quantity);
   if (take <= 0) return quantity;
-  await client.query("update driver_stock set quantity = greatest(0, quantity - $2), updated_at = now() where id = $1", [
-    row.rows[0].id,
-    take,
-  ]);
+  await client.query(
+    `update driver_stock
+     set quantity = greatest(0, quantity - $2), updated_at = now()
+     where id = $1 and driver_id = $3`,
+    [row.rows[0].id, take, driverId],
+  );
   return quantity - take;
 }
 
@@ -512,8 +518,8 @@ async function creditDriverStock(
   );
   if (existing.rows[0]) {
     await client.query(
-      "update driver_stock set quantity = quantity + $2, updated_at = now() where id = $1",
-      [existing.rows[0].id, quantity],
+      "update driver_stock set quantity = quantity + $2, updated_at = now() where id = $1 and driver_id = $3",
+      [existing.rows[0].id, quantity, driverId],
     );
     return;
   }
@@ -524,47 +530,21 @@ async function creditDriverStock(
   );
 }
 
-async function consumeDriverStockFlexible(
-  client: Client,
-  driverId: string,
-  productId: string,
-  variantId: string | undefined,
-  quantity: number,
-): Promise<number> {
-  let leftover = await consumeDriverStock(client, driverId, productId, variantId, quantity);
-  if (leftover > 0 && variantId) {
-    leftover = await consumeDriverStock(client, driverId, productId, undefined, leftover);
-  }
-  if (leftover > 0) {
-    const others = await client.query(
-      `select variant_id from driver_stock
-       where driver_id = $1 and product_id = $2 and quantity > 0
-       order by quantity desc`,
-      [driverId, productId],
-    );
-    for (const row of others.rows) {
-      if (leftover <= 0) break;
-      leftover = await consumeDriverStock(
-        client,
-        driverId,
-        productId,
-        row.variant_id ? String(row.variant_id) : undefined,
-        leftover,
-      );
-    }
-  }
-  return leftover;
-}
-
 function stockAlreadyHeld(items: Array<{ from_driver?: unknown }>): boolean {
   return items.some((it) => it.from_driver != null);
 }
 
-async function driverOnHand(client: Client, driverId: string, productId: string): Promise<number> {
+async function driverVariantOnHand(
+  client: Client,
+  driverId: string,
+  productId: string,
+  variantId: string | undefined,
+): Promise<number> {
   const res = await client.query(
     `select coalesce(sum(quantity), 0) as n from driver_stock
-     where driver_id = $1 and product_id = $2`,
-    [driverId, productId],
+     where driver_id = $1 and product_id = $2
+       and coalesce(variant_id, '') = coalesce($3, '')`,
+    [driverId, productId, variantId ?? ""],
   );
   return Number(res.rows[0]?.n ?? 0);
 }
@@ -582,19 +562,20 @@ async function assertCanFulfill(
 ): Promise<void> {
   const bagUsed: Record<string, number> = {};
   for (const it of items) {
+    const key = `${it.productId}:${it.variantId ?? ""}`;
     const boutique = await boutiqueOnHand(client, it.variantId);
-    const bag = driverId ? await driverOnHand(client, driverId, it.productId) : 0;
-    const driverLeft = Math.max(0, bag - (bagUsed[it.productId] ?? 0));
+    const bag = driverId ? await driverVariantOnHand(client, driverId, it.productId, it.variantId) : 0;
+    const driverLeft = Math.max(0, bag - (bagUsed[key] ?? 0));
     const fromDriver = Math.min(driverLeft, it.quantity);
     const needBoutique = it.quantity - fromDriver;
     if (needBoutique > boutique) {
       throw new Error(
         driverId
-          ? `${it.productName} : stock insuffisant (livreur ${driverLeft}, boutique ${boutique}, demandé ${it.quantity}).`
+          ? `${it.productName} : stock boutique insuffisant (${boutique} restant). Le sac d'un autre livreur n'est pas utilisé.`
           : `${it.productName} : stock insuffisant (${boutique} restant).`,
       );
     }
-    bagUsed[it.productId] = (bagUsed[it.productId] ?? 0) + fromDriver;
+    bagUsed[key] = (bagUsed[key] ?? 0) + fromDriver;
   }
 }
 
@@ -616,7 +597,7 @@ async function takeDriverOrderItems(
     const productId = String(it.product_id);
     const variantId = it.variant_id ? String(it.variant_id) : undefined;
     const name = String(it.product_name || "Article");
-    const leftover = await consumeDriverStockFlexible(client, driverId, productId, variantId, qty);
+    const leftover = await consumeDriverStock(client, driverId, productId, variantId, qty);
     const fromDriver = qty - leftover;
     if (leftover > 0) {
       if (!variantId) throw new Error(`Stock indisponible pour ${name}`);
@@ -624,7 +605,7 @@ async function takeDriverOrderItems(
       const available = Number(stock.rows[0]?.stock ?? 0);
       if (available < leftover) {
         throw new Error(
-          `${name} : stock insuffisant (livreur ${fromDriver}, boutique ${available}, demandé ${qty}).`,
+          `${name} : stock boutique insuffisant (${available} restant). Le stock d'un autre livreur n'est pas débité.`,
         );
       }
       await adjustVariantStock(
@@ -879,9 +860,9 @@ export async function updateOrderStatus(
     }
   }
   const deliveredAt =
-    status === "livree"
-      ? (order.delivered_at ?? new Date().toISOString())
-      : String(order.status) === "livree"
+    status === "livree" && String(order.status) !== "livree"
+      ? new Date().toISOString()
+      : status !== "livree" && String(order.status) === "livree"
         ? null
         : (order.delivered_at ?? null);
   try {
@@ -1048,7 +1029,6 @@ export async function assignDriver(client: Client, id: ID, driverId: ID): Promis
     [nextId("evt"), id, status, `Assignée à ${driver.fullName}`, who.fullName],
   );
   await audit(client, "Assignation livreur", "Order", id);
-  const title = `Nouvelle commande ${current.rows[0].reference}`;
   const message = `${current.rows[0].customer_name} · ${driver.fullName}`;
   await pingManagers(client, {
     title: `Livreur assigné · ${current.rows[0].reference}`,
@@ -1056,7 +1036,7 @@ export async function assignDriver(client: Client, id: ID, driverId: ID): Promis
     href: "/commandes",
   });
   await pingUsers([asUserId(driver.userId)], {
-    title,
+    title: `Course assignée ${current.rows[0].reference}`,
     message: `${current.rows[0].customer_name} — à livrer`,
     href: "/livreur",
   });
@@ -1667,4 +1647,62 @@ export async function collectOrderPayment(
     receivedCdf,
   ]);
   await audit(client, "Encaissement commande", "Order", id);
+}
+
+const MAX_SOUND_DATA_URL = Math.ceil((MAX_NOTIFY_SOUND_BYTES * 4) / 3) + 128;
+
+export async function upsertNotificationSound(
+  client: Client,
+  input: { event: NotificationSoundEvent; fileName: string; mime: string; dataUrl: string },
+): Promise<void> {
+  if (!isNotifySoundEvent(input.event)) throw new Error("Événement de notification inconnu.");
+  const mime = (input.mime || "").trim().toLowerCase();
+  const dataUrl = input.dataUrl.trim();
+  if (!mime.startsWith("audio/")) throw new Error("Le fichier doit être un son (mp3, wav, ogg, m4a…).");
+  if (!dataUrl.startsWith("data:audio/")) throw new Error("Fichier audio invalide. Téléversez-le depuis l'appareil.");
+  if (dataUrl.length > MAX_SOUND_DATA_URL) throw new Error("Fichier trop lourd (maximum 512 Ko).");
+  const fileName = (input.fileName || "son.mp3").replace(/[^\w.\- ()àâäéèêëïîôùûüç]+/gi, "_").slice(0, 180);
+  const { ensureNotificationSounds } = await import("./db");
+  await ensureNotificationSounds(client);
+  await client.query(
+    `insert into notification_sounds (event, file_name, mime, data_url, updated_at)
+     values ($1,$2,$3,$4, now())
+     on conflict (event) do update
+       set file_name = excluded.file_name, mime = excluded.mime, data_url = excluded.data_url, updated_at = now()`,
+    [input.event, fileName, mime, dataUrl],
+  );
+  await audit(client, "Son de notification", "NotificationSound", input.event);
+}
+
+export async function removeNotificationSound(client: Client, event: NotificationSoundEvent): Promise<void> {
+  if (!isNotifySoundEvent(event)) throw new Error("Événement de notification inconnu.");
+  await client.query("delete from notification_sounds where event = $1", [event]);
+  await audit(client, "Suppression son de notification", "NotificationSound", event);
+}
+
+export async function listNotificationSounds(client: Client): Promise<NotificationSound[]> {
+  try {
+    const { ensureNotificationSounds } = await import("./db");
+    await ensureNotificationSounds(client);
+    const res = await client.query(
+      "select event, file_name, mime, data_url, updated_at from notification_sounds order by event",
+    );
+    return res.rows.flatMap((row) => {
+      const event = String(row.event ?? "");
+      if (!isNotifySoundEvent(event)) return [];
+      const dataUrl = String(row.data_url ?? "");
+      if (!dataUrl.startsWith("data:audio/")) return [];
+      return [
+        {
+          event,
+          fileName: String(row.file_name ?? ""),
+          mime: String(row.mime ?? "audio/mpeg"),
+          dataUrl,
+          updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : String(row.updated_at ?? ""),
+        },
+      ];
+    });
+  } catch {
+    return [];
+  }
 }

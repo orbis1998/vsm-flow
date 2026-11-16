@@ -13,6 +13,7 @@ import type {
   DriverStockLine,
   Expense,
   FinancialTransaction,
+  NotificationSoundMeta,
   Order,
   OrderEvent,
   OrderItem,
@@ -27,6 +28,7 @@ import type {
   Supplier,
   User,
 } from "@/types";
+import { isNotifySoundEvent } from "@/lib/notify-sounds";
 
 export function num(value: unknown): number {
   if (value == null || value === "") return 0;
@@ -265,7 +267,7 @@ export function mapOrder(
     receivedUsd: num(row.received_usd),
     receivedCdf: num(row.received_cdf),
     createdAt: iso(row.created_at),
-    history,
+    history: [...history].sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
   };
   const driverId = optStr(row.driver_id);
   if (driverId) order.driverId = driverId;
@@ -275,11 +277,22 @@ export function mapOrder(
   if (posteId) order.posteId = posteId;
   const dueAt = optIso(row.due_at);
   if (dueAt) order.dueAt = dueAt;
-  const deliveredAt =
-    optIso(row.delivered_at) ??
-    [...history].reverse().find((h) => h.status === "livree")?.createdAt;
+  const lastLivree = order.history.filter((h) => h.status === "livree").at(-1)?.createdAt;
+  const stamps = [optIso(row.delivered_at), lastLivree].filter((v): v is string => Boolean(v));
+  const deliveredAt = stamps.sort().at(-1);
   if (deliveredAt) order.deliveredAt = deliveredAt;
   return order;
+}
+
+export function mapNotifySoundMeta(row: Record<string, unknown>): NotificationSoundMeta | null {
+  const event = String(row.event ?? "");
+  if (!isNotifySoundEvent(event)) return null;
+  return {
+    event,
+    fileName: String(row.file_name ?? ""),
+    mime: String(row.mime ?? ""),
+    updatedAt: iso(row.updated_at),
+  };
 }
 
 export function mapDelivery(row: Record<string, unknown>): Delivery {

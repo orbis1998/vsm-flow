@@ -15,6 +15,7 @@ import {
   mapExpense,
   mapMovement,
   mapNotification,
+  mapNotifySoundMeta,
   mapOrder,
   mapOrderEvent,
   mapOrderItem,
@@ -58,7 +59,7 @@ export async function loadAppState(): Promise<AppState> {
           where i.order_id in (select id from orders order by created_at desc limit 400)
         ),
         'orderEvents', (
-          select coalesce(jsonb_agg(e), '[]'::jsonb) from order_events e
+          select coalesce(jsonb_agg(e order by e.created_at), '[]'::jsonb) from order_events e
           where e.order_id in (select id from orders order by created_at desc limit 400)
         ),
         'deliveries', (select coalesce(jsonb_agg(t), '[]'::jsonb) from (select * from deliveries order by created_at desc limit 200) t),
@@ -82,7 +83,21 @@ export async function loadAppState(): Promise<AppState> {
         'notifications', (select coalesce(jsonb_agg(t), '[]'::jsonb) from (select * from notifications order by created_at desc limit 80) t),
         'auditLogs', (select coalesce(jsonb_agg(t), '[]'::jsonb) from (select * from audit_logs order by created_at desc limit 80) t),
         'communes', (select coalesce(jsonb_agg(t), '[]'::jsonb) from (select * from communes order by name) t),
-        'zones', (select coalesce(jsonb_agg(t), '[]'::jsonb) from (select * from delivery_zones order by commune_id, name) t)
+        'zones', (select coalesce(jsonb_agg(t), '[]'::jsonb) from (select * from delivery_zones order by commune_id, name) t),
+        'notificationSounds', (
+          select case
+            when to_regclass('public.notification_sounds') is null then '[]'::jsonb
+            else (
+              select coalesce(jsonb_agg(jsonb_build_object(
+                'event', event,
+                'file_name', file_name,
+                'mime', mime,
+                'updated_at', updated_at
+              ) order by event), '[]'::jsonb)
+              from notification_sounds
+            )
+          end
+        )
       ) as snap
     `);
 
@@ -152,6 +167,9 @@ export async function loadAppState(): Promise<AppState> {
       auditLogs: rows(snap.auditLogs).map(mapAudit),
       communes: rows(snap.communes).map(mapCommune),
       zones: rows(snap.zones).map(mapZone),
+      notificationSounds: rows(snap.notificationSounds)
+        .map(mapNotifySoundMeta)
+        .filter((s): s is NonNullable<typeof s> => Boolean(s)),
     };
   });
 }

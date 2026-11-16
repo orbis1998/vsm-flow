@@ -13,6 +13,7 @@ import type {
   DriverStockLine,
   Expense,
   FinancialTransaction,
+  NotificationSoundMeta,
   Order,
   Poste,
   Product,
@@ -46,6 +47,7 @@ export interface AppState {
   auditLogs: AuditLog[];
   communes: Commune[];
   zones: DeliveryZone[];
+  notificationSounds: NotificationSoundMeta[];
 }
 
 export const EMPTY_APP_STATE: AppState = {
@@ -82,6 +84,7 @@ export const EMPTY_APP_STATE: AppState = {
   auditLogs: [],
   communes: [],
   zones: [],
+  notificationSounds: [],
 };
 
 export const APP_STATE_KEY = ["app-state"] as const;
